@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - WebRTC Multiplayer</title>
+  <title>Wings Cave Flyer - Robust WebRTC Multiplayer</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -19,6 +19,7 @@
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(5, 8, 15, 0.95); z-index: 200;
       display: flex; flex-direction: column; justify-content: center; align-items: center;
+      text-align: center;
     }
     .btn {
       background: rgba(0,255,204,0.1); border: 2px solid #00ffcc; color: #00ffcc;
@@ -29,10 +30,12 @@
     input {
       background: #000; border: 1px solid #00ffcc; color: #fff;
       padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
+      width: 200px; text-transform: uppercase;
     }
+    #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
-  <!-- PeerJS verkkokirjasto WebRTC-yhteyksiin -->
+  <!-- PeerJS verkkokirjasto -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -44,16 +47,19 @@
 </div>
 
 <div id="lobby-overlay">
-  <h1 style="text-shadow:0 0 10px #00ffcc;">WINGS CAVE FLYER MULTIPLAYER</h1>
-  <p>Pelaa kaverin kanssa verkossa (WASD/Space tai Nuolet/Enter)</p>
-  <div style="margin-top:20px;">
+  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER MULTIPLAYER</h1>
+  <p style="color: #88aacc; margin-bottom: 25px;">2D Luolalentely verkossa</p>
+  
+  <div>
     <button class="btn" id="btn-host">Luo huone (Host)</button>
   </div>
-  <div style="margin-top:15px;">
-    <input type="text" id="room-input" placeholder="Syötä Huone-ID" maxlength="6">
+  
+  <div style="margin-top:20px;">
+    <input type="text" id="room-input" placeholder="Syötä Huone-ID">
     <button class="btn" id="btn-join">Liity peliin</button>
   </div>
-  <p id="net-info" style="margin-top:20px; color:#ffcc00;"></p>
+  
+  <div id="status-msg">Valitse "Luo huone" tai syötä kaverin koodi.</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -71,33 +77,69 @@ const keys = {};
 window.addEventListener('keydown', e => { keys[e.code] = true; });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Verkkotila (PeerJS)
+// STUN-palvelinasetukset (Googlen ilmaiset reitityspalvelimet)
+const peerConfig = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+  }
+};
+
 let peer = null, conn = null;
 let isHost = false;
 let clientInputs = {};
+const statusEl = document.getElementById('status-msg');
 
 document.getElementById('btn-host').onclick = () => {
-  document.getElementById('net-info').innerText = "Luodaan huonetta...";
-  peer = new Peer();
+  statusEl.innerText = "Yhdistetään palvelimeen...";
+  statusEl.style.color = "#ffcc00";
+  
+  if (peer) peer.destroy();
+  peer = new Peer(peerConfig);
+
   peer.on('open', id => {
-    let code = id.substring(0, 5).toUpperCase();
     isHost = true;
-    document.getElementById('net-info').innerText = "HUONEID: " + code + "\nAnna koodi kaverillesi!";
+    statusEl.innerHTML = `HUONE LUOTU!<br>Anna tämä koodi kaverillesi:<br><b style="font-size:24px; color:#00ffcc;">${id}</b>`;
   });
+
   peer.on('connection', c => {
     conn = c;
     setupConnection();
+  });
+
+  peer.on('error', err => {
+    console.error(err);
+    statusEl.innerText = "Virhe palvelinyhteydessä: " + err.type;
+    statusEl.style.color = "#ff3366";
   });
 };
 
 document.getElementById('btn-join').onclick = () => {
   let code = document.getElementById('room-input').value.trim();
-  if (!code) return alert("Syötä koodi!");
-  document.getElementById('net-info').innerText = "Yhdistetään...";
-  peer = new Peer();
+  if (!code) {
+    statusEl.innerText = "Syötä huonekoodi ensin!";
+    statusEl.style.color = "#ff3366";
+    return;
+  }
+  
+  statusEl.innerText = "Yhdistetään isäntään...";
+  statusEl.style.color = "#ffcc00";
+  
+  if (peer) peer.destroy();
+  peer = new Peer(peerConfig);
+
   peer.on('open', () => {
-    conn = peer.connect(code);
+    conn = peer.connect(code, { reliable: true });
     setupConnection();
+  });
+
+  peer.on('error', err => {
+    console.error(err);
+    statusEl.innerText = "Yhteysvirhe: Tarkista huonekoodi!";
+    statusEl.style.color = "#ff3366";
   });
 };
 
@@ -107,17 +149,28 @@ function setupConnection() {
     document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
     startLoop();
   });
+
   conn.on('data', data => {
     if (isHost) {
-      clientInputs = data.inputs;
+      clientInputs = data.inputs || {};
     } else {
-      // Client vastaanottaa maailman tilan
       syncGameState(data);
     }
   });
+
+  conn.on('close', () => {
+    alert("Yhteys toiseen pelaajaan katkesi!");
+    window.location.reload();
+  });
+
+  conn.on('error', err => {
+    console.error(err);
+    statusEl.innerText = "Virhe yhteydessä: " + err;
+    statusEl.style.color = "#ff3366";
+  });
 }
 
-// Luolasto & Fysiikat
+// Luolasto ja pelimekaniikka
 const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
@@ -172,6 +225,7 @@ const ships = [
 ];
 
 function syncGameState(data) {
+  if (!data || !data.ships) return;
   data.ships.forEach((s, idx) => {
     ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
     ships[idx].hp = s.hp; ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
@@ -181,27 +235,31 @@ function syncGameState(data) {
 function startLoop() {
   function loop() {
     if (isHost) {
-      let p1Controls = { left: keys['KeyA']||keys['ArrowLeft'], right: keys['KeyD']||keys['ArrowRight'], thrust: keys['KeyW']||keys['ArrowUp'] };
+      let p1Controls = { 
+        left: keys['KeyA']||keys['ArrowLeft'], 
+        right: keys['KeyD']||keys['ArrowRight'], 
+        thrust: keys['KeyW']||keys['ArrowUp'] 
+      };
       let p2Controls = clientInputs;
       ships[0].update(p1Controls);
       ships[1].update(p2Controls);
 
-      // Lähetä tila clientille
       if (conn && conn.open) {
         conn.send({ ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills })) });
       }
     } else {
-      // Client lähettää syötteet hostille
-      let myInputs = { left: keys['KeyA']||keys['ArrowLeft'], right: keys['KeyD']||keys['ArrowRight'], thrust: keys['KeyW']||keys['ArrowUp'] };
+      let myInputs = { 
+        left: keys['KeyA']||keys['ArrowLeft'], 
+        right: keys['KeyD']||keys['ArrowRight'], 
+        thrust: keys['KeyW']||keys['ArrowUp'] 
+      };
       if (conn && conn.open) conn.send({ inputs: myInputs });
     }
 
-    // Kamera
     let myShip = isHost ? ships[0] : ships[1];
     camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
     camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
 
-    // Piirto
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
@@ -214,6 +272,10 @@ function startLoop() {
     ctx.fill(); ctx.stroke();
 
     ships.forEach(s => s.draw());
+    
+    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)}`;
+    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)}`;
+
     requestAnimationFrame(loop);
   }
   loop();
