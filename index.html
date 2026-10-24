@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Robust WebRTC Multiplayer</title>
+  <title>Wings Cave Flyer - Full Multiplayer Physics</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -30,36 +30,32 @@
     input {
       background: #000; border: 1px solid #00ffcc; color: #fff;
       padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
-      width: 200px; text-transform: uppercase;
+      width: 250px;
     }
     #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
-  <!-- PeerJS verkkokirjasto -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
 <div id="hud">
-  <div id="p1-hud">P1 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p1-hud" style="color:#00ffcc">P1 (WASD) HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="status-text" style="color:#ffcc00">Odotetaan yhteyttä...</div>
-  <div id="p2-hud" style="color:#ff3366">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p2-hud" style="color:#ff3366">P2 (Nuolet) HP: 150 | FUEL: 100 | KILLS: 0</div>
 </div>
 
 <div id="lobby-overlay">
-  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER MULTIPLAYER</h1>
-  <p style="color: #88aacc; margin-bottom: 25px;">2D Luolalentely verkossa</p>
-  
+  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
+  <p style="color: #88aacc; margin-bottom: 25px;">Verkkopeli (P2P WebRTC)</p>
   <div>
     <button class="btn" id="btn-host">Luo huone (Host)</button>
   </div>
-  
   <div style="margin-top:20px;">
-    <input type="text" id="room-input" placeholder="Syötä Huone-ID">
+    <input type="text" id="room-input" placeholder="Syötä Huone-ID tähän">
     <button class="btn" id="btn-join">Liity peliin</button>
   </div>
-  
-  <div id="status-msg">Valitse "Luo huone" tai syötä kaverin koodi.</div>
+  <div id="status-msg">Valitse isäntä tai liity kaverin koodilla.</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -77,13 +73,11 @@ const keys = {};
 window.addEventListener('keydown', e => { keys[e.code] = true; });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// STUN-palvelinasetukset (Googlen ilmaiset reitityspalvelimet)
 const peerConfig = {
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' }
     ]
   }
 };
@@ -94,53 +88,28 @@ let clientInputs = {};
 const statusEl = document.getElementById('status-msg');
 
 document.getElementById('btn-host').onclick = () => {
-  statusEl.innerText = "Yhdistetään palvelimeen...";
-  statusEl.style.color = "#ffcc00";
-  
+  statusEl.innerText = "Luodaan huonetta...";
   if (peer) peer.destroy();
   peer = new Peer(peerConfig);
-
   peer.on('open', id => {
     isHost = true;
-    statusEl.innerHTML = `HUONE LUOTU!<br>Anna tämä koodi kaverillesi:<br><b style="font-size:24px; color:#00ffcc;">${id}</b>`;
+    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
   });
-
-  peer.on('connection', c => {
-    conn = c;
-    setupConnection();
-  });
-
-  peer.on('error', err => {
-    console.error(err);
-    statusEl.innerText = "Virhe palvelinyhteydessä: " + err.type;
-    statusEl.style.color = "#ff3366";
-  });
+  peer.on('connection', c => { conn = c; setupConnection(); });
+  peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
 };
 
 document.getElementById('btn-join').onclick = () => {
   let code = document.getElementById('room-input').value.trim();
-  if (!code) {
-    statusEl.innerText = "Syötä huonekoodi ensin!";
-    statusEl.style.color = "#ff3366";
-    return;
-  }
-  
-  statusEl.innerText = "Yhdistetään isäntään...";
-  statusEl.style.color = "#ffcc00";
-  
+  if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
+  statusEl.innerText = "Yhdistetään...";
   if (peer) peer.destroy();
   peer = new Peer(peerConfig);
-
   peer.on('open', () => {
     conn = peer.connect(code, { reliable: true });
     setupConnection();
   });
-
-  peer.on('error', err => {
-    console.error(err);
-    statusEl.innerText = "Yhteysvirhe: Tarkista huonekoodi!";
-    statusEl.style.color = "#ff3366";
-  });
+  peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
 };
 
 function setupConnection() {
@@ -158,64 +127,155 @@ function setupConnection() {
     }
   });
 
-  conn.on('close', () => {
-    alert("Yhteys toiseen pelaajaan katkesi!");
-    window.location.reload();
-  });
-
-  conn.on('error', err => {
-    console.error(err);
-    statusEl.innerText = "Virhe yhteydessä: " + err;
-    statusEl.style.color = "#ff3366";
-  });
+  conn.on('close', () => { alert("Yhteys katkesi!"); location.reload(); });
 }
 
-// Luolasto ja pelimekaniikka
+// Luolasto, tukikohdat ja esteet
 const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
   ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
   floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
 }
-const bases = [{ x1: 400, x2: 700, y: WORLD.height - 280 }, { x1: 3800, x2: 4100, y: WORLD.height - 280 }];
+const bases = [
+  { x1: 400, x2: 700, y: WORLD.height - 280 },
+  { x1: 2000, x2: 2300, y: WORLD.height - 320 },
+  { x1: 3800, x2: 4100, y: WORLD.height - 280 }
+];
 bases.forEach(b => {
   for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) if (i < numSegs) floor[i] = b.y;
 });
 
+const obstacles = [
+  { x: 1200, y: 1200, radius: 140 },
+  { x: 1600, y: 800, radius: 100 },
+  { x: 2800, y: 1500, radius: 180 },
+  { x: 3400, y: 900, radius: 120 },
+  { x: 4400, y: 1300, radius: 150 }
+];
+
+function getFloorY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return floor[0];
+  if (i >= numSegs - 1) return floor[numSegs - 1];
+  let t = (x % segW) / segW;
+  return floor[i] * (1 - t) + floor[i + 1] * t;
+}
+function getCeilingY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return ceiling[0];
+  if (i >= numSegs - 1) return ceiling[numSegs - 1];
+  let t = (x % segW) / segW;
+  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
+}
+
 class Ship {
   constructor(id, x, y, color) {
-    this.id = id; this.x = x; this.y = y; this.color = color;
+    this.id = id; this.startX = x; this.startY = y; this.color = color;
+    this.reset();
+  }
+  reset() {
+    this.x = this.startX; this.y = this.startY;
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
     this.hp = 150; this.fuel = 100; this.kills = 0;
-    this.isDead = false; this.docked = false;
+    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
-  update(ctrl) {
+  update(ctrl, bullets, particles) {
     if (this.isDead) return;
+
     if (ctrl.left) this.angle -= 0.07;
     if (ctrl.right) this.angle += 0.07;
+
     if (ctrl.thrust && this.fuel > 0) {
-      if (this.docked) { this.docked = false; this.vy = -3.0; }
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
+
+      particles.push({
+        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
+        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
+      });
     }
-    if (!this.docked) {
+
+    if (ctrl.fire && this.cooldown <= 0) {
+      bullets.push({
+        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
+        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
+        owner: this.id, life: 80
+      });
+      this.cooldown = 10;
+    }
+    if (this.cooldown > 0) this.cooldown--;
+
+    if (!this.dockedBase) {
       this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
       this.x += this.vx; this.y += this.vy;
     } else {
       this.vx = 0; this.vy = 0;
-      if (this.hp < 150) this.hp += 0.8; if (this.fuel < 100) this.fuel += 1.0;
+      this.y = this.dockedBase.y - 10;
+      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
+      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+    }
+
+    // Laskeutuminen tukikohtaan
+    if (!this.dockedBase && this.vy >= 0) {
+      for (let b of bases) {
+        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
+          if (Math.hypot(this.vx, this.vy) < 4.0) {
+            this.dockedBase = b;
+            this.y = b.y - 10;
+            this.vx = 0; this.vy = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    // Törmäykset
+    let ceilY = getCeilingY(this.x);
+    let floorY = getFloorY(this.x);
+    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
+    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
+
+    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
+      let speed = Math.hypot(this.vx, this.vy);
+      if (speed > 4.0 || hitWall) {
+        this.explode(particles, null);
+      } else {
+        this.hp -= 25;
+        this.vx *= -0.4; this.vy *= -0.4;
+        if (this.hp <= 0) this.explode(particles, null);
+      }
     }
   }
+
+  explode(particles, killerId) {
+    this.isDead = true; this.dockedBase = null;
+    if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
+    for (let i = 0; i < 25; i++) {
+      particles.push({
+        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
+      });
+    }
+    setTimeout(() => this.reset(), 2000);
+  }
+
   draw() {
     if (this.isDead) return;
     ctx.save();
     ctx.translate(this.x - camera.x, this.y - camera.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = this.color; ctx.fillStyle = '#000'; ctx.lineWidth = 2;
+    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
   }
 }
 
@@ -224,43 +284,83 @@ const ships = [
   new Ship(1, 580, WORLD.height - 290, '#ff3366')
 ];
 
+const bullets = [];
+const particles = [];
+
 function syncGameState(data) {
-  if (!data || !data.ships) return;
-  data.ships.forEach((s, idx) => {
-    ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
-    ships[idx].hp = s.hp; ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-  });
+  if (!data) return;
+  if (data.ships) {
+    data.ships.forEach((s, idx) => {
+      ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
+      ships[idx].hp = s.hp; ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+      ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
+    });
+  }
+  if (data.bullets) bullets.splice(0, bullets.length, ...data.bullets);
+  if (data.particles) particles.splice(0, particles.length, ...data.particles);
 }
 
 function startLoop() {
   function loop() {
     if (isHost) {
-      let p1Controls = { 
-        left: keys['KeyA']||keys['ArrowLeft'], 
-        right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'] 
-      };
-      let p2Controls = clientInputs;
-      ships[0].update(p1Controls);
-      ships[1].update(p2Controls);
+      let p1Ctrl = { left: keys['KeyA']||keys['ArrowLeft'], right: keys['KeyD']||keys['ArrowRight'], thrust: keys['KeyW']||keys['ArrowUp'], fire: keys['Space'] };
+      let p2Ctrl = clientInputs;
+
+      ships[0].update(p1Ctrl, bullets, particles);
+      ships[1].update(p2Ctrl, bullets, particles);
+
+      // Ammukset
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.vx; b.y += b.vy; b.life--;
+        let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+        if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+          bullets.splice(i, 1);
+          continue;
+        }
+        for (let s of ships) {
+          if (!s.isDead && s.id !== b.owner) {
+            if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
+              s.hp -= 25;
+              if (s.hp <= 0) s.explode(particles, b.owner);
+              bullets.splice(i, 1);
+              break;
+            }
+          }
+        }
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].x += particles[i].vx;
+        particles[i].y += particles[i].vy;
+        particles[i].life--;
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
 
       if (conn && conn.open) {
-        conn.send({ ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills })) });
+        conn.send({
+          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
+          bullets: bullets,
+          particles: particles
+        });
       }
     } else {
-      let myInputs = { 
+      let myCtrl = { 
         left: keys['KeyA']||keys['ArrowLeft'], 
         right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'] 
+        thrust: keys['KeyW']||keys['ArrowUp'], 
+        fire: keys['Space'] || keys['Enter'] 
       };
-      if (conn && conn.open) conn.send({ inputs: myInputs });
+      if (conn && conn.open) conn.send({ inputs: myCtrl });
     }
 
     let myShip = isHost ? ships[0] : ships[1];
     camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
     camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
 
+    // Piirto
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
     for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
@@ -271,10 +371,34 @@ function startLoop() {
     ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
     ctx.fill(); ctx.stroke();
 
+    ctx.fillStyle = '#ff3366';
+    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
+    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
+
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    obstacles.forEach(o => {
+      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
+
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
+    bases.forEach(b => {
+      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
+    });
+
+    particles.forEach(p => {
+      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
+    });
+
+    ctx.fillStyle = '#ffcc00';
+    bullets.forEach(b => {
+      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
     ships.forEach(s => s.draw());
-    
-    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)}`;
-    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)}`;
+
+    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
+    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
 
     requestAnimationFrame(loop);
   }
