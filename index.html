@@ -164,17 +164,8 @@ function restartMatch() {
 
 document.getElementById('btn-host').onclick = () => {
   statusEl.innerText = "Luodaan huonetta...";
-  
   try {
-    if (typeof Peer === 'undefined') {
-      statusEl.innerText = "Virhe: PeerJS-kirjasto ei ole latautunut! Tarkista verkkoyhteys tai mainosesto.";
-      return;
-    }
-
-    if (peer) {
-      try { peer.destroy(); } catch(e) {}
-    }
-
+    if (peer) peer.destroy();
     peer = new Peer(peerConfig);
 
     peer.on('open', id => {
@@ -194,7 +185,11 @@ document.getElementById('btn-host').onclick = () => {
       c.on('open', () => {
         c.send({ type: 'assign', playerIndex: assignedIndex });
         document.getElementById('status-text').innerText = `Pelaajia yhdistetty: ${clientConnections.length + 1}/4`;
-        if (clientConnections.length === 1 && !timerInterval) {
+        
+        // Piilotetaan isännän valikko heti kun kaveri liittyy
+        document.getElementById('lobby-overlay').style.display = 'none';
+
+        if (!timerInterval) {
           startTimer();
           startLoop();
         }
@@ -210,36 +205,32 @@ document.getElementById('btn-host').onclick = () => {
       });
     });
 
-    peer.on('error', err => { 
-      statusEl.innerText = "Verkkovirhe: " + (err.type || err); 
-    });
-
+    peer.on('error', err => { statusEl.innerText = "Verkkovirhe: " + err.type; });
   } catch (e) {
-    statusEl.innerText = "Kriittinen virhe luonnissa: " + e.message;
+    statusEl.innerText = "Virhe: " + e.message;
   }
 };
 
 document.getElementById('btn-join').onclick = () => {
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
-  statusEl.innerText = "Yhdistetään...";
+  statusEl.innerText = "Yhdistetään isäntään...";
   
   try {
-    if (typeof Peer === 'undefined') {
-      statusEl.innerText = "Virhe: PeerJS-kirjasto ei ole latautunut!";
-      return;
-    }
-
-    if (peer) {
-      try { peer.destroy(); } catch(e) {}
-    }
-
+    if (peer) peer.destroy();
     peer = new Peer(peerConfig);
     
     peer.on('open', () => {
       hostConnection = peer.connect(code, { reliable: true });
       
+      let connectionTimer = setTimeout(() => {
+        if (hostConnection && !hostConnection.open) {
+          statusEl.innerText = "Yhdistäminen aikakatkaistiin! Tarkista koodi tai kokeile uudelleen.";
+        }
+      }, 8000);
+
       hostConnection.on('open', () => {
+        clearTimeout(connectionTimer);
         document.getElementById('lobby-overlay').style.display = 'none';
       });
 
@@ -256,10 +247,11 @@ document.getElementById('btn-join').onclick = () => {
       hostConnection.on('close', () => { alert("Yhteys isäntään katkesi!"); location.reload(); });
     });
 
-    peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
-
+    peer.on('error', err => { 
+      statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; 
+    });
   } catch (e) {
-    statusEl.innerText = "Kriittinen virhe liityttäessä: " + e.message;
+    statusEl.innerText = "Virhe: " + e.message;
   }
 };
 
