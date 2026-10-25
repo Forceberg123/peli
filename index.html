@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Singleplayer</title>
+  <title>Wings Cave Flyer - Recoil & Audio</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -45,7 +45,7 @@
 <div id="hud">
   <div id="p1-hud" style="color:#00ffcc">HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="timer">Aikaa jäljellä: 60s</div>
-  <div>Ohjaus: WASD + Space</div>
+  <div>Ohjaus: WASD + Space (Ampuminen)</div>
 </div>
 
 <div id="game-over">
@@ -56,7 +56,7 @@
 
 <div id="lobby-overlay">
   <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 30px;">Yksinpelitila (Testi)</p>
+  <p style="color: #88aacc; margin-bottom: 30px;">Rekyylillä ja äänillä varustettu versio</p>
   <div>
     <button class="btn" id="btn-solo">PELAA NYT</button>
   </div>
@@ -74,6 +74,33 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
+
+// Web Audio API äänitehoste ammunnalle
+let audioCtx = null;
+function playShootSound() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(550, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.12);
+
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {
+    // Selaaja saattaa vaatia käyttäjän interaktion äänen sallimiseen
+  }
+}
 
 window.addEventListener('keydown', e => { 
   keys[e.code] = true; 
@@ -118,7 +145,6 @@ function restartMatch() {
   startTimer();
 }
 
-// Suora ja pomminvarma käynnistys napista
 document.getElementById('btn-solo').addEventListener('click', () => {
   document.getElementById('lobby-overlay').style.display = 'none';
   startTimer();
@@ -195,10 +221,17 @@ class Ship {
     }
 
     if (keys['Space'] && this.cooldown <= 0) {
+      // Ammus ja rekyyli (työntää alusta taaksepäin ammuttaessa)
       bullets.push({
         x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12, life: 80
+        vx: Math.cos(this.angle) * 13, vy: Math.sin(this.angle) * 13, life: 80
       });
+      
+      // Rekyylivoima alukselle
+      this.vx -= Math.cos(this.angle) * 0.35;
+      this.vy -= Math.sin(this.angle) * 0.35;
+
+      playShootSound();
       this.cooldown = 12;
     }
     if (this.cooldown > 0) this.cooldown--;
@@ -283,7 +316,11 @@ function loop() {
 
     for (let i = bullets.length - 1; i >= 0; i--) {
       let b = bullets[i];
-      b.x += b.vx; b.y += b.vy; b.life--;
+      b.x += b.vx; 
+      b.y += b.vy; 
+      b.vy += 0.04; // Painovoima vaikuttaa ammukseen (kaareva lentorata)
+      b.life--;
+      
       let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
       if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
         bullets.splice(i, 1);
@@ -301,7 +338,6 @@ function loop() {
   camera.x += (ship.x - canvas.width / 2 - camera.x) * 0.1;
   camera.y += (ship.y - canvas.height / 2 - camera.y) * 0.1;
 
-  // Piirto
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
@@ -340,7 +376,6 @@ function loop() {
 
   ship.draw();
 
-  // Mini-tutka
   const mapW = 160, mapH = 90;
   const mapX = canvas.width - mapW - 20, mapY = 60;
   ctx.fillStyle = 'rgba(5, 8, 15, 0.8)';
