@@ -7,7 +7,6 @@
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
       background: #000; overflow: hidden; font-family: monospace; color: #00ffcc;
-      user-select: none;
     }
     #hud {
       position: fixed; top: 0; left: 0; width: 100%;
@@ -43,7 +42,7 @@
       padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
       width: 250px;
     }
-    #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; word-break: break-all; }
+    #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -156,42 +155,30 @@ function restartMatch() {
   startTimer();
 }
 
-document.getElementById('btn-host').addEventListener('click', () => {
+document.getElementById('btn-host').onclick = () => {
   statusEl.innerText = "Luodaan huonetta...";
-  try {
-    if (peer) {
-      try { peer.destroy(); } catch(e) {}
-    }
-    peer = new Peer(peerConfig);
-    peer.on('open', id => {
-      isHost = true;
-      statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
-    });
-    peer.on('connection', c => { conn = c; setupConnection(); });
-    peer.on('error', err => { statusEl.innerText = "Virhe verkossa: " + (err.type || err); });
-  } catch(e) {
-    statusEl.innerText = "Virhe aloitettaessa: " + e.message;
-  }
-});
+  if (peer) peer.destroy();
+  peer = new Peer(peerConfig);
+  peer.on('open', id => {
+    isHost = true;
+    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+  });
+  peer.on('connection', c => { conn = c; setupConnection(); });
+  peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
+};
 
-document.getElementById('btn-join').addEventListener('click', () => {
+document.getElementById('btn-join').onclick = () => {
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
   statusEl.innerText = "Yhdistetään...";
-  try {
-    if (peer) {
-      try { peer.destroy(); } catch(e) {}
-    }
-    peer = new Peer(peerConfig);
-    peer.on('open', () => {
-      conn = peer.connect(code, { reliable: true });
-      setupConnection();
-    });
-    peer.on('error', err => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
-  } catch(e) {
-    statusEl.innerText = "Virhe aloitettaessa: " + e.message;
-  }
-});
+  if (peer) peer.destroy();
+  peer = new Peer(peerConfig);
+  peer.on('open', () => {
+    conn = peer.connect(code, { reliable: true });
+    setupConnection();
+  });
+  peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
+};
 
 function setupConnection() {
   conn.on('open', () => {
@@ -287,10 +274,6 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
-      // Rekyyli
-      this.vx -= Math.cos(this.angle) * 0.35;
-      this.vy -= Math.sin(this.angle) * 0.35;
-      
       this.cooldown = 12;
     }
     if (this.cooldown > 0) this.cooldown--;
@@ -422,14 +405,10 @@ function startLoop() {
         ships[0].update(p1Ctrl, bullets, particles);
         ships[1].update(p2Ctrl, bullets, particles);
 
-        // Ammukset (painovoima vaikuttaa luoteihin)
+        // Ammukset
         for (let i = bullets.length - 1; i >= 0; i--) {
           let b = bullets[i];
-          b.x += b.vx; 
-          b.y += b.vy; 
-          b.vy += 0.04;
-          b.life--;
-          
+          b.x += b.vx; b.y += b.vy; b.life--;
           let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
           if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
             bullets.splice(i, 1);
@@ -483,4 +462,108 @@ function startLoop() {
     camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
 
     // Piirto
-    ctx.clearRect(0, 0
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
+
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#ff3366';
+    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
+    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
+
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    obstacles.forEach(o => {
+      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
+
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
+    bases.forEach(b => {
+      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
+    });
+
+    particles.forEach(p => {
+      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
+    });
+
+    ctx.fillStyle = '#ffcc00';
+    bullets.forEach(b => {
+      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    ships.forEach(s => s.draw());
+
+    // MINIKARTTA
+    const mapW = 180, mapH = 110;
+    const mapX = canvas.width - mapW - 20, mapY = 60;
+
+    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+    
+    // Katto
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    // Lattia
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (floor[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    // Esteet
+    ctx.fillStyle = 'rgba(0, 255, 204, 0.5)';
+    obstacles.forEach(o => {
+      let mx = mapX + (o.x / WORLD.width) * mapW;
+      let my = mapY + (o.y / WORLD.height) * mapH;
+      let mr = (o.radius / WORLD.width) * mapW;
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(1, mr), 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Tukikohdat
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 2;
+    bases.forEach(b => {
+      let mx1 = mapX + (b.x1 / WORLD.width) * mapW;
+      let mx2 = mapX + (b.x2 / WORLD.width) * mapW;
+      let my = mapY + (b.y / WORLD.height) * mapH;
+      ctx.beginPath(); ctx.moveTo(mx1, my); ctx.lineTo(mx2, my); ctx.stroke();
+    });
+
+    // Pelaajat
+    ships.forEach(s => {
+      if (!s.isDead) {
+        let sx = mapX + (s.x / WORLD.width) * mapW;
+        let sy = mapY + (s.y / WORLD.height) * mapH;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    });
+
+    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
+    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
+
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+</script>
+</body>
+</html>
