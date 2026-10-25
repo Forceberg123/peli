@@ -15,6 +15,16 @@
       background: rgba(5, 8, 15, 0.85); padding: 10px 20px;
       box-sizing: border-box; border-bottom: 1px solid #00ffcc;
     }
+    #timer { font-size: 16px; color: #ffcc00; }
+    #game-over {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.95); z-index: 300;
+      flex-direction: column; justify-content: center; align-items: center;
+      color: #00ffcc; text-align: center;
+    }
+    #game-over h1 { font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc; }
+    #game-over p { font-size: 18px; color: #fff; margin-bottom: 25px; }
     #lobby-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(5, 8, 15, 0.95); z-index: 200;
@@ -42,7 +52,14 @@
 <div id="hud">
   <div id="p1-hud" style="color:#00ffcc">P1 (WASD+Space) HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="status-text" style="color:#ffcc00">Odotetaan yhteyttä...</div>
+  <div id="timer">Aikaa: 60s</div>
   <div id="p2-hud" style="color:#ff3366">P2 (Nuolet+Enter) HP: 150 | FUEL: 100 | KILLS: 0</div>
+</div>
+
+<div id="game-over">
+  <h1 id="winner-title">ERÄ PÄÄTTYI!</h1>
+  <p id="final-score">Tapot: 0</p>
+  <p style="font-size: 14px; color: #88aacc;">Paina Space tai Enter aloittaaksesi uuden erän</p>
 </div>
 
 <div id="lobby-overlay">
@@ -70,7 +87,13 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.code] = true; });
+
+window.addEventListener('keydown', e => { 
+  keys[e.code] = true; 
+  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
+    restartMatch();
+  }
+});
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 const peerConfig = {
@@ -86,6 +109,51 @@ let peer = null, conn = null;
 let isHost = false;
 let clientInputs = {};
 const statusEl = document.getElementById('status-msg');
+
+let matchTime = 60;
+let matchEnded = false;
+let timerInterval = null;
+
+function startTimer() {
+  clearInterval(timerInterval);
+  matchTime = 60;
+  matchEnded = false;
+  document.getElementById('game-over').style.display = 'none';
+  if (isHost) {
+    timerInterval = setInterval(() => {
+      if (matchTime > 0) {
+        matchTime--;
+      } else {
+        endMatch();
+      }
+    }, 1000);
+  }
+}
+
+function endMatch() {
+  clearInterval(timerInterval);
+  matchEnded = true;
+  const p1Kills = ships[0].kills, p2Kills = ships[1].kills;
+  const titleEl = document.getElementById('winner-title'), scoreEl = document.getElementById('final-score');
+  
+  if (p1Kills > p2Kills) {
+    titleEl.innerText = "PELAAJA 1 VOITTI!"; titleEl.style.color = "#00ffcc";
+  } else if (p2Kills > p1Kills) {
+    titleEl.innerText = "PELAAJA 2 VOITTI!"; titleEl.style.color = "#ff3366";
+  } else {
+    titleEl.innerText = "TASAPELI!"; titleEl.style.color = "#ffcc00";
+  }
+  scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  document.getElementById('game-over').style.display = 'flex';
+}
+
+function restartMatch() {
+  if (!isHost) return;
+  ships[0].kills = 0; ships[1].kills = 0;
+  ships[0].reset(); ships[1].reset();
+  bullets.length = 0; particles.length = 0;
+  startTimer();
+}
 
 document.getElementById('btn-host').onclick = () => {
   statusEl.innerText = "Luodaan huonetta...";
@@ -116,12 +184,14 @@ function setupConnection() {
   conn.on('open', () => {
     document.getElementById('lobby-overlay').style.display = 'none';
     document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
+    startTimer();
     startLoop();
   });
 
   conn.on('data', data => {
     if (isHost) {
       clientInputs = data.inputs || {};
+      if (data.restart) restartMatch();
     } else {
       syncGameState(data);
     }
@@ -181,7 +251,7 @@ class Ship {
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
   update(ctrl, bullets, particles) {
-    if (this.isDead) return;
+    if (this.isDead || matchEnded) return;
 
     if (ctrl.left) this.angle -= 0.07;
     if (ctrl.right) this.angle += 0.07;
@@ -259,7 +329,9 @@ class Ship {
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
       });
     }
-    setTimeout(() => this.reset(), 2000);
+    setTimeout(() => {
+      if (!matchEnded) this.reset();
+    }, 2000);
   }
 
   draw() {
@@ -289,6 +361,19 @@ const particles = [];
 
 function syncGameState(data) {
   if (!data) return;
+  if (data.matchTime !== undefined) {
+    matchTime = data.matchTime;
+    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+  }
+  
+  if (data.matchEnded && !matchEnded) {
+    matchEnded = true;
+    endMatch();
+  } else if (!data.matchEnded && matchEnded) {
+    matchEnded = false;
+    document.getElementById('game-over').style.display = 'none';
+  }
+
   if (data.ships) {
     data.ships.forEach((s, idx) => {
       ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
@@ -316,42 +401,46 @@ function startLoop() {
         fire: clientInputs.fire || false
       };
 
-      ships[0].update(p1Ctrl, bullets, particles);
-      ships[1].update(p2Ctrl, bullets, particles);
+      if (!matchEnded) {
+        ships[0].update(p1Ctrl, bullets, particles);
+        ships[1].update(p2Ctrl, bullets, particles);
 
-      // Ammukset
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i];
-        b.x += b.vx; b.y += b.vy; b.life--;
-        let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-        if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-          bullets.splice(i, 1);
-          continue;
-        }
-        for (let s of ships) {
-          if (!s.isDead && s.id !== b.owner) {
-            if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
-              s.hp -= 25;
-              if (s.hp <= 0) s.explode(particles, b.owner);
-              bullets.splice(i, 1);
-              break;
+        // Ammukset
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          let b = bullets[i];
+          b.x += b.vx; b.y += b.vy; b.life--;
+          let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+          if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+            bullets.splice(i, 1);
+            continue;
+          }
+          for (let s of ships) {
+            if (!s.isDead && s.id !== b.owner) {
+              if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
+                s.hp -= 25;
+                if (s.hp <= 0) s.explode(particles, b.owner);
+                bullets.splice(i, 1);
+                break;
+              }
             }
           }
         }
-      }
 
-      for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].x += particles[i].vx;
-        particles[i].y += particles[i].vy;
-        particles[i].life--;
-        if (particles[i].life <= 0) particles.splice(i, 1);
+        for (let i = particles.length - 1; i >= 0; i--) {
+          particles[i].x += particles[i].vx;
+          particles[i].y += particles[i].vy;
+          particles[i].life--;
+          if (particles[i].life <= 0) particles.splice(i, 1);
+        }
       }
 
       if (conn && conn.open) {
         conn.send({
           ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
           bullets: bullets,
-          particles: particles
+          particles: particles,
+          matchTime: matchTime,
+          matchEnded: matchEnded
         });
       }
     } else {
@@ -361,7 +450,11 @@ function startLoop() {
         thrust: keys['KeyW']||keys['ArrowUp'], 
         fire: keys['Space'] || keys['Enter'] 
       };
-      if (conn && conn.open) conn.send({ inputs: myCtrl });
+      let sendData = { inputs: myCtrl };
+      if (matchEnded && (keys['Space'] || keys['Enter'])) {
+        sendData.restart = true;
+      }
+      if (conn && conn.open) conn.send(sendData);
     }
 
     let myShip = isHost ? ships[0] : ships[1];
@@ -406,6 +499,63 @@ function startLoop() {
     });
 
     ships.forEach(s => s.draw());
+
+    // MINIKARTTA
+    const mapW = 180, mapH = 110;
+    const mapX = canvas.width - mapW - 20, mapY = 60;
+
+    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+    
+    // Katto
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    // Lattia
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (floor[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    // Esteet
+    ctx.fillStyle = 'rgba(0, 255, 204, 0.5)';
+    obstacles.forEach(o => {
+      let mx = mapX + (o.x / WORLD.width) * mapW;
+      let my = mapY + (o.y / WORLD.height) * mapH;
+      let mr = (o.radius / WORLD.width) * mapW;
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(1, mr), 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Tukikohdat
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 2;
+    bases.forEach(b => {
+      let mx1 = mapX + (b.x1 / WORLD.width) * mapW;
+      let mx2 = mapX + (b.x2 / WORLD.width) * mapW;
+      let my = mapY + (b.y / WORLD.height) * mapH;
+      ctx.beginPath(); ctx.moveTo(mx1, my); ctx.lineTo(mx2, my); ctx.stroke();
+    });
+
+    // Pelaajat
+    ships.forEach(s => {
+      if (!s.isDead) {
+        let sx = mapX + (s.x / WORLD.width) * mapW;
+        let sy = mapY + (s.y / WORLD.height) * mapH;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    });
 
     document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
     document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
