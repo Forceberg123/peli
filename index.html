@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Recoil & Audio</title>
+  <title>Wings Cave Flyer - Audio Suite</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -56,7 +56,7 @@
 
 <div id="lobby-overlay">
   <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 30px;">Rekyylillä ja äänillä varustettu versio</p>
+  <p style="color: #88aacc; margin-bottom: 30px;">Täydellisillä äänitehosteilla varustettu versio</p>
   <div>
     <button class="btn" id="btn-solo">PELAA NYT</button>
   </div>
@@ -75,31 +75,96 @@ const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
 
-// Web Audio API äänitehoste ammunnalle
+// Web Audio API -äänijärjestelmä
 let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
 function playShootSound() {
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
+    initAudio();
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
-
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(550, audioCtx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.12);
-
     gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
-
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-
     osc.start();
     osc.stop(audioCtx.currentTime + 0.12);
-  } catch (e) {
-    // Selaaja saattaa vaatia käyttäjän interaktion äänen sallimiseen
-  }
+  } catch (e) {}
+}
+
+function playBumpSound() {
+  try {
+    initAudio();
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  } catch (e) {}
+}
+
+function playExplosionSound() {
+  try {
+    initAudio();
+    let bufferSize = audioCtx.sampleRate * 0.5;
+    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    let data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    let noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    let filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(300, audioCtx.currentTime);
+    filter.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+
+    let gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    noise.start();
+  } catch (e) {}
+}
+
+let rechargeOsc = null;
+let rechargeGain = null;
+function setRechargeSound(active) {
+  try {
+    initAudio();
+    if (active && !rechargeOsc) {
+      rechargeOsc = audioCtx.createOscillator();
+      rechargeGain = audioCtx.createGain();
+      rechargeOsc.type = 'sine';
+      rechargeOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
+      rechargeGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      rechargeOsc.connect(rechargeGain);
+      rechargeGain.connect(audioCtx.destination);
+      rechargeOsc.start();
+    } else if (!active && rechargeOsc) {
+      rechargeOsc.stop();
+      rechargeOsc.disconnect();
+      rechargeOsc = null;
+      rechargeGain = null;
+    }
+  } catch (e) {}
 }
 
 window.addEventListener('keydown', e => { 
@@ -133,6 +198,7 @@ function startTimer() {
 function endMatch() {
   clearInterval(timerInterval);
   matchEnded = true;
+  setRechargeSound(false);
   document.getElementById('final-score').innerText = `Kerätyt tapot: ${ship.kills}`;
   document.getElementById('game-over').style.display = 'flex';
 }
@@ -201,6 +267,7 @@ class Ship {
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
     this.hp = 150; this.fuel = 100;
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
+    setRechargeSound(false);
   }
   update(bullets, particles) {
     if (this.isDead || matchEnded) return;
@@ -209,7 +276,11 @@ class Ship {
     if (keys['KeyD'] || keys['ArrowRight']) this.angle += 0.07;
 
     if ((keys['KeyW'] || keys['ArrowUp']) && this.fuel > 0) {
-      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
+      if (this.dockedBase) { 
+        this.dockedBase = null; 
+        this.vy = -3.0; 
+        setRechargeSound(false);
+      }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
@@ -221,13 +292,10 @@ class Ship {
     }
 
     if (keys['Space'] && this.cooldown <= 0) {
-      // Ammus ja rekyyli (työntää alusta taaksepäin ammuttaessa)
       bullets.push({
         x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
         vx: Math.cos(this.angle) * 13, vy: Math.sin(this.angle) * 13, life: 80
       });
-      
-      // Rekyylivoima alukselle
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
 
@@ -239,12 +307,18 @@ class Ship {
     if (!this.dockedBase) {
       this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
       this.x += this.vx; this.y += this.vy;
+      setRechargeSound(false);
     } else {
       this.vx = 0; this.vy = 0;
       this.y = this.dockedBase.y - 10;
       this.angle += (-Math.PI / 2 - this.angle) * 0.2;
-      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
-      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+      if (this.hp < 150 || this.fuel < 100) {
+        setRechargeSound(true);
+        if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+        if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+      } else {
+        setRechargeSound(false);
+      }
     }
 
     if (!this.dockedBase && this.vy >= 0) {
@@ -272,6 +346,7 @@ class Ship {
       } else {
         this.hp -= 25;
         this.vx *= -0.4; this.vy *= -0.4;
+        playBumpSound();
         if (this.hp <= 0) this.explode(particles);
       }
     }
@@ -279,6 +354,8 @@ class Ship {
 
   explode(particles) {
     this.isDead = true; this.dockedBase = null;
+    setRechargeSound(false);
+    playExplosionSound();
     for (let i = 0; i < 25; i++) {
       particles.push({
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
@@ -318,7 +395,7 @@ function loop() {
       let b = bullets[i];
       b.x += b.vx; 
       b.y += b.vy; 
-      b.vy += 0.04; // Painovoima vaikuttaa ammukseen (kaareva lentorata)
+      b.vy += 0.04;
       b.life--;
       
       let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
