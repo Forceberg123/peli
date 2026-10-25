@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - 4 Player Multiplayer</title>
+  <title>Wings Cave Flyer - 4 Player Full Edition</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -50,12 +50,12 @@
 <body>
 
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">P1: HP:150 | K:0</div>
-  <div id="p2-hud" style="color:#ff3366">P2: HP:150 | K:0</div>
-  <div id="p3-hud" style="color:#00ff66">P3: HP:150 | K:0</div>
-  <div id="p4-hud" style="color:#ffcc00">P4: HP:150 | K:0</div>
+  <div id="p1-hud" style="color:#00ffcc">P1 HP:150 | FUEL:100 | K:0</div>
+  <div id="p2-hud" style="color:#ff3366">P2 HP:150 | FUEL:100 | K:0</div>
+  <div id="p3-hud" style="color:#00ff66">P3 HP:150 | FUEL:100 | K:0</div>
+  <div id="p4-hud" style="color:#ffcc00">P4 HP:150 | FUEL:100 | K:0</div>
   <div id="timer">Aikaa: 60s</div>
-  <div id="status-text" style="color:#fff">Odotetaan...</div>
+  <div id="status-text" style="color:#fff">Odotetaan yhteyttä...</div>
 </div>
 
 <div id="game-over">
@@ -65,8 +65,8 @@
 </div>
 
 <div id="lobby-overlay">
-  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER - 4P</h1>
-  <p style="color: #88aacc; margin-bottom: 25px;">Moninpeli (2-4 Pelaajaa)</p>
+  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
+  <p style="color: #88aacc; margin-bottom: 25px;">4 Pelaajan Moninpeli (P2P WebRTC)</p>
   <div>
     <button class="btn" id="btn-host">Luo huone (Host)</button>
   </div>
@@ -102,7 +102,9 @@ const peerConfig = {
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.services.mozilla.com' }
     ]
   }
 };
@@ -171,7 +173,12 @@ document.getElementById('btn-host').onclick = () => {
     peer.on('open', id => {
       isHost = true;
       myPlayerIndex = 0;
-      statusEl.innerHTML = `HUONE LUOTU (P1)!<br>Kopioi koodi kavereille:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+      
+      document.getElementById('lobby-overlay').style.display = 'none';
+      document.getElementById('status-text').innerText = `ISÄNTÄ (P1) | Koodi: ${id}`;
+      
+      startTimer();
+      startLoop();
     });
     
     peer.on('connection', c => {
@@ -184,15 +191,7 @@ document.getElementById('btn-host').onclick = () => {
       
       c.on('open', () => {
         c.send({ type: 'assign', playerIndex: assignedIndex });
-        document.getElementById('status-text').innerText = `Pelaajia yhdistetty: ${clientConnections.length + 1}/4`;
-        
-        // Piilotetaan isännän valikko heti kun kaveri liittyy
-        document.getElementById('lobby-overlay').style.display = 'none';
-
-        if (!timerInterval) {
-          startTimer();
-          startLoop();
-        }
+        document.getElementById('status-text').innerText = `Pelaajia yht: ${clientConnections.length + 1}/4`;
       });
 
       c.on('data', data => {
@@ -202,6 +201,7 @@ document.getElementById('btn-host').onclick = () => {
 
       c.on('close', () => {
         clientConnections = clientConnections.filter(item => item.conn !== c);
+        document.getElementById('status-text').innerText = `Pelaajia yht: ${clientConnections.length + 1}/4`;
       });
     });
 
@@ -225,9 +225,9 @@ document.getElementById('btn-join').onclick = () => {
       
       let connectionTimer = setTimeout(() => {
         if (hostConnection && !hostConnection.open) {
-          statusEl.innerText = "Yhdistäminen aikakatkaistiin! Tarkista koodi tai kokeile uudelleen.";
+          statusEl.innerText = "Yhdistäminen aikakatkaistiin! Tarkista koodi tai palomuuri/VPN-asetukset.";
         }
-      }, 8000);
+      }, 10000);
 
       hostConnection.on('open', () => {
         clearTimeout(connectionTimer);
@@ -237,7 +237,7 @@ document.getElementById('btn-join').onclick = () => {
       hostConnection.on('data', data => {
         if (data.type === 'assign') {
           myPlayerIndex = data.playerIndex;
-          document.getElementById('status-text').innerText = `Olet Pelaaja ${myPlayerIndex + 1}`;
+          document.getElementById('status-text').innerText = `LIITTYNYT (Pelaaja ${myPlayerIndex + 1})`;
           startLoop();
         } else {
           syncGameState(data);
@@ -248,7 +248,7 @@ document.getElementById('btn-join').onclick = () => {
     });
 
     peer.on('error', err => { 
-      statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; 
+      statusEl.innerText = "Yhteysvirhe (" + err.type + "): Tarkista koodi!"; 
     });
   } catch (e) {
     statusEl.innerText = "Virhe: " + e.message;
@@ -346,6 +346,7 @@ class Ship {
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
     }
 
+    // Laskeutuminen tukikohtaan
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
@@ -398,6 +399,11 @@ class Ship {
     ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
   }
 }
 
@@ -490,109 +496,4 @@ function startLoop() {
       clientConnections.forEach(item => {
         if (item.conn && item.conn.open) {
           item.conn.send({
-            ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
-            bullets: bullets,
-            particles: particles,
-            matchTime: matchTime,
-            matchEnded: matchEnded
-          });
-        }
-      });
-
-    } else {
-      let sendData = { inputs: myCtrl };
-      if (matchEnded && (keys['Space'] || keys['Enter'])) {
-        sendData.restart = true;
-      }
-      if (hostConnection && hostConnection.open) hostConnection.send(sendData);
-    }
-
-    let myShip = ships[myPlayerIndex];
-    camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
-    camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
-
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
-    ctx.fill(); ctx.stroke();
-
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
-    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
-
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    obstacles.forEach(o => {
-      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-    });
-
-    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
-    bases.forEach(b => {
-      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
-    });
-
-    particles.forEach(p => {
-      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
-    });
-
-    ctx.fillStyle = '#ffcc00';
-    bullets.forEach(b => {
-      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
-    });
-
-    ships.forEach(s => s.draw());
-
-    const mapW = 180, mapH = 110;
-    const mapX = canvas.width - mapW - 20, mapY = 50;
-
-    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
-    ctx.fillRect(mapX, mapY, mapW, mapH);
-    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
-    ctx.strokeRect(mapX, mapY, mapW, mapH);
-
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i += 2) {
-      let mx = mapX + (i * segW / WORLD.width) * mapW;
-      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-    ctx.stroke();
-
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i += 2) {
-      let mx = mapX + (i * segW / WORLD.width) * mapW;
-      let my = mapY + (floor[i] / WORLD.height) * mapH;
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-    ctx.stroke();
-
-    ships.forEach(s => {
-      if (!s.isDead) {
-        let sx = mapX + (s.x / WORLD.width) * mapW;
-        let sy = mapY + (s.y / WORLD.height) * mapH;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(sx - 2, sy - 2, 4, 4);
-      }
-    });
-
-    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} K:${ships[0].kills}`;
-    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} K:${ships[1].kills}`;
-    document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} K:${ships[2].kills}`;
-    document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} K:${ships[3].kills}`;
-    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
-
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-</script>
-</body>
-</html>
+            ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead
