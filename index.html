@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Multiplayer with Shooting</title>
+  <title>Wings Cave Flyer - Single & Multiplayer</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -14,6 +14,23 @@
       font-size: 14px; font-weight: bold; z-index: 100;
       background: rgba(5, 8, 15, 0.85); padding: 10px 20px;
       box-sizing: border-box; border-bottom: 1px solid #00ffcc;
+    }
+    #timer {
+      font-size: 16px;
+      color: #ffcc00;
+    }
+    #game-over {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.95); z-index: 300;
+      flex-direction: column; justify-content: center; align-items: center;
+      color: #00ffcc; text-align: center;
+    }
+    #game-over h1 {
+      font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc;
+    }
+    #game-over p {
+      font-size: 18px; color: #fff; margin-bottom: 25px;
     }
     #lobby-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -32,7 +49,7 @@
       padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
       width: 250px;
     }
-    #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
+    #status-msg { margin-top: 15px; font-size: 14px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -40,22 +57,32 @@
 <body>
 
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">P1 (WASD+Space) HP: 150 | FUEL: 100 | KILLS: 0</div>
-  <div id="status-text" style="color:#ffcc00">Odotetaan yhteyttä...</div>
-  <div id="p2-hud" style="color:#ff3366">P2 (Nuolet+Enter) HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p1-hud" style="color:#00ffcc">P1 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="timer">Aikaa jäljellä: 60s</div>
+  <div id="p2-hud" style="color:#ff3366">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
+</div>
+
+<div id="game-over">
+  <h1 id="winner-title">VOITTAJA!</h1>
+  <p id="final-score">P1: 0 - P2: 0</p>
+  <p style="font-size: 14px; color: #88aacc;">Paina Space tai Enter aloittaaksesi uuden erän</p>
 </div>
 
 <div id="lobby-overlay">
   <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 25px;">Verkkopeli (P2P WebRTC)</p>
+  <p style="color: #88aacc; margin-bottom: 20px;">Valitse pelimuoto</p>
+  
   <div>
-    <button class="btn" id="btn-host">Luo huone (Host)</button>
+    <button class="btn" id="btn-solo" style="background:rgba(255,204,0,0.1); border-color:#ffcc00; color:#ffcc00;">Pelaa yksin (Testi)</button>
   </div>
-  <div style="margin-top:20px;">
+  <div style="margin-top: 15px; border-top: 1px solid #223344; padding-top: 15px;">
+    <button class="btn" id="btn-host">Luo verkkopelihuone (Host)</button>
+  </div>
+  <div style="margin-top:10px;">
     <input type="text" id="room-input" placeholder="Syötä Huone-ID tähän">
     <button class="btn" id="btn-join">Liity peliin</button>
   </div>
-  <div id="status-msg">Valitse isäntä tai liity kaverin koodilla.</div>
+  <div id="status-msg"></div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -70,7 +97,12 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.code] = true; });
+window.addEventListener('keydown', e => { 
+  keys[e.code] = true; 
+  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
+    restartMatch();
+  }
+});
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 const peerConfig = {
@@ -83,9 +115,81 @@ const peerConfig = {
 };
 
 let peer = null, conn = null;
-let isHost = false;
+let isHost = false, isSinglePlayer = false;
 let clientInputs = {};
 const statusEl = document.getElementById('status-msg');
+
+let matchTime = 60;
+let matchEnded = false;
+let timerInterval = null;
+
+function startTimer() {
+  clearInterval(timerInterval);
+  matchTime = 60;
+  matchEnded = false;
+  document.getElementById('game-over').style.display = 'none';
+  
+  timerInterval = setInterval(() => {
+    if (matchTime > 0) {
+      matchTime--;
+      let timerEl = document.getElementById('timer');
+      if (timerEl) timerEl.innerText = `Aikaa jäljellä: ${matchTime}s`;
+    } else {
+      endMatch();
+    }
+  }, 1000);
+}
+
+function endMatch() {
+  clearInterval(timerInterval);
+  matchEnded = true;
+  
+  const p1Kills = ships[0].kills;
+  const p2Kills = ships[1].kills;
+  
+  const titleEl = document.getElementById('winner-title');
+  const scoreEl = document.getElementById('final-score');
+  
+  if (isSinglePlayer) {
+    titleEl.innerText = "ERÄ PÄÄTTYI!";
+    titleEl.style.color = "#ffcc00";
+    scoreEl.innerText = `Kerätyt tapot: ${p1Kills}`;
+  } else if (p1Kills > p2Kills) {
+    titleEl.innerText = "PELAAJA 1 VOITTI!";
+    titleEl.style.color = "#00ffcc";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  } else if (p2Kills > p1Kills) {
+    titleEl.innerText = "PELAAJA 2 VOITTI!";
+    titleEl.style.color = "#ff3366";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  } else {
+    titleEl.innerText = "TASAPELI!";
+    titleEl.style.color = "#ffcc00";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  }
+  
+  document.getElementById('game-over').style.display = 'flex';
+}
+
+function restartMatch() {
+  ships[0].kills = 0;
+  ships[1].kills = 0;
+  ships[0].reset(true);
+  ships[1].reset(true);
+  bullets.length = 0;
+  particles.length = 0;
+  startTimer();
+}
+
+// Yksinpelin käynnistys
+document.getElementById('btn-solo').onclick = () => {
+  isSinglePlayer = true;
+  isHost = true;
+  document.getElementById('lobby-overlay').style.display = 'none';
+  document.getElementById('status-text').innerText = "YKSINPELI (Testi)";
+  startTimer();
+  startLoop();
+};
 
 document.getElementById('btn-host').onclick = () => {
   statusEl.innerText = "Luodaan huonetta...";
@@ -93,7 +197,8 @@ document.getElementById('btn-host').onclick = () => {
   peer = new Peer(peerConfig);
   peer.on('open', id => {
     isHost = true;
-    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+    isSinglePlayer = false;
+    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:16px; color:#00ffcc;">${id}</b>`;
   });
   peer.on('connection', c => { conn = c; setupConnection(); });
   peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
@@ -114,8 +219,10 @@ document.getElementById('btn-join').onclick = () => {
 
 function setupConnection() {
   conn.on('open', () => {
+    isSinglePlayer = false;
     document.getElementById('lobby-overlay').style.display = 'none';
     document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
+    startTimer();
     startLoop();
   });
 
@@ -172,16 +279,18 @@ function getCeilingY(x) {
 class Ship {
   constructor(id, x, y, color) {
     this.id = id; this.startX = x; this.startY = y; this.color = color;
-    this.reset();
+    this.kills = 0;
+    this.reset(true);
   }
-  reset() {
+  reset(fullReset = false) {
     this.x = this.startX; this.y = this.startY;
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
-    this.hp = 150; this.fuel = 100; this.kills = 0;
+    this.hp = 150; this.fuel = 100;
+    if (fullReset) this.kills = 0;
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
   update(ctrl, bullets, particles) {
-    if (this.isDead) return;
+    if (this.isDead || matchEnded) return;
 
     if (ctrl.left) this.angle -= 0.07;
     if (ctrl.right) this.angle += 0.07;
@@ -219,7 +328,6 @@ class Ship {
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
     }
 
-    // Laskeutuminen tukikohtaan
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
@@ -233,7 +341,6 @@ class Ship {
       }
     }
 
-    // Törmäykset
     let ceilY = getCeilingY(this.x);
     let floorY = getFloorY(this.x);
     let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
@@ -253,13 +360,17 @@ class Ship {
 
   explode(particles, killerId) {
     this.isDead = true; this.dockedBase = null;
-    if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
+    if (killerId !== null && killerId !== undefined) {
+      ships[killerId].kills++;
+    }
     for (let i = 0; i < 25; i++) {
       particles.push({
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
       });
     }
-    setTimeout(() => this.reset(), 2000);
+    setTimeout(() => {
+      if (!matchEnded) this.reset(false);
+    }, 2000);
   }
 
   draw() {
@@ -289,6 +400,15 @@ const particles = [];
 
 function syncGameState(data) {
   if (!data) return;
+  matchTime = data.matchTime !== undefined ? data.matchTime : matchTime;
+  matchEnded = data.matchEnded !== undefined ? data.matchEnded : matchEnded;
+  
+  if (matchEnded && document.getElementById('game-over').style.display !== 'flex') {
+    endMatch();
+  } else if (!matchEnded && document.getElementById('game-over').style.display === 'flex') {
+    document.getElementById('game-over').style.display = 'none';
+  }
+
   if (data.ships) {
     data.ships.forEach((s, idx) => {
       ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
@@ -302,118 +422,15 @@ function syncGameState(data) {
 
 function startLoop() {
   function loop() {
-    if (isHost) {
+    if ((isHost || isSinglePlayer) && !matchEnded) {
       let p1Ctrl = { 
         left: keys['KeyA']||keys['ArrowLeft'], 
         right: keys['KeyD']||keys['ArrowRight'], 
         thrust: keys['KeyW']||keys['ArrowUp'], 
         fire: keys['Space'] 
       };
-      let p2Ctrl = {
+      
+      let p2Ctrl = isSinglePlayer ? { left: false, right: false, thrust: false, fire: false } : {
         left: clientInputs.left || false,
         right: clientInputs.right || false,
-        thrust: clientInputs.thrust || false,
-        fire: clientInputs.fire || false
-      };
-
-      ships[0].update(p1Ctrl, bullets, particles);
-      ships[1].update(p2Ctrl, bullets, particles);
-
-      // Ammukset
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i];
-        b.x += b.vx; b.y += b.vy; b.life--;
-        let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-        if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-          bullets.splice(i, 1);
-          continue;
-        }
-        for (let s of ships) {
-          if (!s.isDead && s.id !== b.owner) {
-            if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
-              s.hp -= 25;
-              if (s.hp <= 0) s.explode(particles, b.owner);
-              bullets.splice(i, 1);
-              break;
-            }
-          }
-        }
-      }
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].x += particles[i].vx;
-        particles[i].y += particles[i].vy;
-        particles[i].life--;
-        if (particles[i].life <= 0) particles.splice(i, 1);
-      }
-
-      if (conn && conn.open) {
-        conn.send({
-          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
-          bullets: bullets,
-          particles: particles
-        });
-      }
-    } else {
-      let myCtrl = { 
-        left: keys['KeyA']||keys['ArrowLeft'], 
-        right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'], 
-        fire: keys['Space'] || keys['Enter'] 
-      };
-      if (conn && conn.open) conn.send({ inputs: myCtrl });
-    }
-
-    let myShip = isHost ? ships[0] : ships[1];
-    camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
-    camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
-
-    // Piirto
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
-
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
-    ctx.fill(); ctx.stroke();
-
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
-    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
-
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    obstacles.forEach(o => {
-      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-    });
-
-    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
-    bases.forEach(b => {
-      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
-    });
-
-    particles.forEach(p => {
-      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
-    });
-
-    ctx.fillStyle = '#ffcc00';
-    bullets.forEach(b => {
-      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
-    });
-
-    ships.forEach(s => s.draw());
-
-    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
-    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
-
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-</script>
-</body>
-</html>
+        thrust: clientInputs.thrust ||
