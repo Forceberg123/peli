@@ -45,7 +45,7 @@
 <div id="hud">
   <div id="p1-hud" style="color:#00ffcc">HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="timer">Aikaa jäljellä: 60s</div>
-  <div>Ohjaus: WASD + Space (Ampuminen)</div>
+  <div>Ohjaus: WASD / Nuolet + Space</div>
 </div>
 
 <div id="game-over">
@@ -391,4 +391,33 @@ class Ship {
   }
 }
 
-const ship = new Ship(500,
+const ship = new Ship(500, 800, '#00ffcc');
+const bullets = [];
+const particles = [];
+
+function loop() {
+  if (!matchEnded) {
+    ship.update(bullets, particles);
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      let b = bullets[i];
+      b.x += b.vx; 
+      b.y += b.vy; 
+      b.vy += 0.04;
+      b.life--;
+      
+      let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+      if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+        bullets.splice(i, 1);
+      }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].x += particles[i].vx;
+      particles[i].y += particles[i].vy;
+      particles[i].life--;
+      if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  camera.x += (ship.x - canvas.width / 2 -
