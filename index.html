@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Multiplayer</title>
+  <title>Wings Cave Flyer - Multiplayer with Shooting</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -51,7 +51,7 @@
 
 <div id="hud">
   <div id="p1-hud" style="color:#00ffcc">P1 (WASD+Space) HP: 150 | FUEL: 100 | KILLS: 0</div>
-  <div id="timer">Aikaa jäljellä: 60s</div>
+  <div id="timer">Aikaa: 60s</div>
   <div id="p2-hud" style="color:#ff3366">P2 (Nuolet+Enter) HP: 150 | FUEL: 100 | KILLS: 0</div>
 </div>
 
@@ -95,19 +95,16 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Web Audio API Äänijärjestelmä
+// Äänijärjestelmä (Web Audio API)
 let audioCtx = null;
 function initAudio() {
-  try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  } catch(e) {}
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
 function playShootSound() {
   try {
     initAudio();
-    if (!audioCtx) return;
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
     osc.type = 'sawtooth';
@@ -123,7 +120,6 @@ function playShootSound() {
 function playBumpSound() {
   try {
     initAudio();
-    if (!audioCtx) return;
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
     osc.type = 'triangle';
@@ -139,7 +135,6 @@ function playBumpSound() {
 function playExplosionSound() {
   try {
     initAudio();
-    if (!audioCtx) return;
     let bufferSize = audioCtx.sampleRate * 0.5;
     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     let data = buffer.getChannelData(0);
@@ -162,7 +157,6 @@ let rechargeOsc = null, rechargeGain = null;
 function setRechargeSound(active) {
   try {
     initAudio();
-    if (!audioCtx) return;
     if (active && !rechargeOsc) {
       rechargeOsc = audioCtx.createOscillator();
       rechargeGain = audioCtx.createGain();
@@ -178,7 +172,6 @@ function setRechargeSound(active) {
   } catch (e) {}
 }
 
-// PeerJS Verkkopeli
 const peerConfig = {
   config: {
     iceServers: [
@@ -200,14 +193,16 @@ function startTimer() {
   matchTime = 60;
   matchEnded = false;
   document.getElementById('game-over').style.display = 'none';
-  timerInterval = setInterval(() => {
-    if (matchTime > 0) {
-      matchTime--;
-      document.getElementById('timer').innerText = `Aikaa jäljellä: ${matchTime}s`;
-    } else {
-      endMatch();
-    }
-  }, 1000);
+  if (isHost) {
+    timerInterval = setInterval(() => {
+      if (matchTime > 0) {
+        matchTime--;
+        document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+      } else {
+        endMatch();
+      }
+    }, 1000);
+  }
 }
 
 function endMatch() {
@@ -219,18 +214,17 @@ function endMatch() {
   
   if (p1Kills > p2Kills) {
     titleEl.innerText = "PELAAJA 1 VOITTI!"; titleEl.style.color = "#00ffcc";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
   } else if (p2Kills > p1Kills) {
     titleEl.innerText = "PELAAJA 2 VOITTI!"; titleEl.style.color = "#ff3366";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
   } else {
     titleEl.innerText = "TASAPELI!"; titleEl.style.color = "#ffcc00";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
   }
+  scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
   document.getElementById('game-over').style.display = 'flex';
 }
 
 function restartMatch() {
+  if (!isHost) return;
   ships[0].kills = 0; ships[1].kills = 0;
   ships[0].reset(true); ships[1].reset(true);
   bullets.length = 0; particles.length = 0;
@@ -238,40 +232,28 @@ function restartMatch() {
 }
 
 document.getElementById('btn-host').onclick = () => {
-  initAudio();
-  statusEl.innerText = "Yhdistetään opastepalvelimeen...";
+  statusEl.innerText = "Luodaan huonetta...";
   if (peer) peer.destroy();
-  
-  try {
-    peer = new Peer(peerConfig);
-    peer.on('open', id => {
-      isHost = true;
-      statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
-    });
-    peer.on('connection', c => { conn = c; setupConnection(); });
-    peer.on('error', err => { statusEl.innerText = "Virhe verkkoyhteydessä: " + err.type; });
-  } catch(e) {
-    statusEl.innerText = "PeerJS alustus epäonnistui. Tarkista verkkoyhteys.";
-  }
+  peer = new Peer(peerConfig);
+  peer.on('open', id => {
+    isHost = true;
+    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+  });
+  peer.on('connection', c => { conn = c; setupConnection(); });
+  peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
 };
 
 document.getElementById('btn-join').onclick = () => {
-  initAudio();
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
   statusEl.innerText = "Yhdistetään...";
   if (peer) peer.destroy();
-  
-  try {
-    peer = new Peer(peerConfig);
-    peer.on('open', () => {
-      conn = peer.connect(code, { reliable: true });
-      setupConnection();
-    });
-    peer.on('error', err => { statusEl.innerText = "Yhteysvirhe: " + err.type; });
-  } catch(e) {
-    statusEl.innerText = "Yhdistäminen epäonnistui.";
-  }
+  peer = new Peer(peerConfig);
+  peer.on('open', () => {
+    conn = peer.connect(code, { reliable: true });
+    setupConnection();
+  });
+  peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
 };
 
 function setupConnection() {
@@ -284,6 +266,7 @@ function setupConnection() {
   conn.on('data', data => {
     if (isHost) {
       clientInputs = data.inputs || {};
+      if (data.restart) restartMatch();
     } else {
       syncGameState(data);
     }
@@ -341,9 +324,9 @@ class Ship {
     this.x = this.startX; this.y = this.startY;
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
     this.hp = 150; this.fuel = 100;
-    if (fullReset) this.kills = 0;
+    if (fullReset) this.kills = 0; // Tapot säilyvät tavallisessa kuolemassa!
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
-    if (this.id === 0 && isHost) setRechargeSound(false);
+    if (this.id === (isHost ? 0 : 1)) setRechargeSound(false);
   }
   update(ctrl, bullets, particles) {
     if (this.isDead || matchEnded) return;
@@ -352,7 +335,7 @@ class Ship {
     if (ctrl.right) this.angle += 0.07;
 
     if (ctrl.thrust && this.fuel > 0) {
-      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; if (this.id === 0 && isHost) setRechargeSound(false); }
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; if (this.id === (isHost ? 0 : 1)) setRechargeSound(false); }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
@@ -369,59 +352,8 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
+      // Rekyyli
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
-      playShootSound();
-      this.cooldown = 12;
-    }
-    if (this.cooldown > 0) this.cooldown--;
-
-    if (!this.dockedBase) {
-      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
-      this.x += this.vx; this.y += this.vy;
-      if (this.id === 0 && isHost) setRechargeSound(false);
-    } else {
-      this.vx = 0; this.vy = 0;
-      this.y = this.dockedBase.y - 10;
-      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
-      if (this.hp < 150 || this.fuel < 100) {
-        if (this.id === 0 && isHost) setRechargeSound(true);
-        if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
-        if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
-      } else {
-        if (this.id === 0 && isHost) setRechargeSound(false);
-      }
-    }
-
-    if (!this.dockedBase && this.vy >= 0) {
-      for (let b of bases) {
-        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
-          if (Math.hypot(this.vx, this.vy) < 4.0) {
-            this.dockedBase = b;
-            this.y = b.y - 10;
-            this.vx = 0; this.vy = 0;
-            break;
-          }
-        }
-      }
-    }
-
-    let ceilY = getCeilingY(this.x);
-    let floorY = getFloorY(this.x);
-    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
-    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
-
-    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
-      let speed = Math.hypot(this.vx, this.vy);
-      if (speed > 4.0 || hitWall) {
-        this.explode(particles, null);
-      } else {
-        this.hp -= 25;
-        this.vx *= -0.4; this.vy *= -0.4;
-        playBumpSound();
-        if (this.hp <= 0) this.explode(particles, null);
-      }
-    }
-  }
-
-  explode(
+      if (this.id === (isHost ? 0 : 1)) playShootSound();
+      this
