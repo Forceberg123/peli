@@ -154,7 +154,7 @@ function endMatch() {
   if (isSinglePlayer) {
     titleEl.innerText = "ERÄ PÄÄTTYI!";
     titleEl.style.color = "#ffcc00";
-    scoreEl.innerText = `Kerätyt tapot: ${p1Kills}`;
+    scoreEl.innerText = `Lennon kesto 60s takana!`;
   } else if (p1Kills > p2Kills) {
     titleEl.innerText = "PELAAJA 1 VOITTI!";
     titleEl.style.color = "#00ffcc";
@@ -182,13 +182,14 @@ function restartMatch() {
   startTimer();
 }
 
-// Yksinpelin käynnistys
+// Yksinpelin käynnistys suoraan
 document.getElementById('btn-solo').onclick = () => {
   isSinglePlayer = true;
   isHost = true;
   document.getElementById('lobby-overlay').style.display = 'none';
   document.getElementById('status-text').innerText = "YKSINPELI (Testi)";
   document.getElementById('p2-hud').style.display = 'none';
+  
   startTimer();
   if (!gameStarted) {
     gameStarted = true;
@@ -251,163 +252,4 @@ const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
   ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
-  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
-}
-const bases = [
-  { x1: 400, x2: 700, y: WORLD.height - 280 },
-  { x1: 2000, x2: 2300, y: WORLD.height - 320 },
-  { x1: 3800, x2: 4100, y: WORLD.height - 280 }
-];
-bases.forEach(b => {
-  for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) if (i < numSegs) floor[i] = b.y;
-});
-
-const obstacles = [
-  { x: 1200, y: 1200, radius: 140 },
-  { x: 1600, y: 800, radius: 100 },
-  { x: 2800, y: 1500, radius: 180 },
-  { x: 3400, y: 900, radius: 120 },
-  { x: 4400, y: 1300, radius: 150 }
-];
-
-function getFloorY(x) {
-  let i = Math.floor(x / segW);
-  if (i < 0) return floor[0];
-  if (i >= numSegs - 1) return floor[numSegs - 1];
-  let t = (x % segW) / segW;
-  return floor[i] * (1 - t) + floor[i + 1] * t;
-}
-function getCeilingY(x) {
-  let i = Math.floor(x / segW);
-  if (i < 0) return ceiling[0];
-  if (i >= numSegs - 1) return ceiling[numSegs - 1];
-  let t = (x % segW) / segW;
-  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
-}
-
-class Ship {
-  constructor(id, x, y, color) {
-    this.id = id; this.startX = x; this.startY = y; this.color = color;
-    this.kills = 0;
-    this.reset(true);
-  }
-  reset(fullReset = false) {
-    this.x = this.startX; this.y = this.startY;
-    this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
-    this.hp = 150; this.fuel = 100;
-    if (fullReset) this.kills = 0;
-    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
-  }
-  update(ctrl, bullets, particles) {
-    if (this.isDead || matchEnded) return;
-
-    if (ctrl.left) this.angle -= 0.07;
-    if (ctrl.right) this.angle += 0.07;
-
-    if (ctrl.thrust && this.fuel > 0) {
-      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
-      this.vx += Math.cos(this.angle) * 0.2;
-      this.vy += Math.sin(this.angle) * 0.2;
-      this.fuel = Math.max(0, this.fuel - 0.15);
-
-      particles.push({
-        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
-        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
-      });
-    }
-
-    if (ctrl.fire && this.cooldown <= 0) {
-      bullets.push({
-        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
-        owner: this.id, life: 80
-      });
-      this.cooldown = 12;
-    }
-    if (this.cooldown > 0) this.cooldown--;
-
-    if (!this.dockedBase) {
-      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
-      this.x += this.vx; this.y += this.vy;
-    } else {
-      this.vx = 0; this.vy = 0;
-      this.y = this.dockedBase.y - 10;
-      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
-      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
-      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
-    }
-
-    if (!this.dockedBase && this.vy >= 0) {
-      for (let b of bases) {
-        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
-          if (Math.hypot(this.vx, this.vy) < 4.0) {
-            this.dockedBase = b;
-            this.y = b.y - 10;
-            this.vx = 0; this.vy = 0;
-            break;
-          }
-        }
-      }
-    }
-
-    let ceilY = getCeilingY(this.x);
-    let floorY = getFloorY(this.x);
-    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
-    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
-
-    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
-      let speed = Math.hypot(this.vx, this.vy);
-      if (speed > 4.0 || hitWall) {
-        this.explode(particles, null);
-      } else {
-        this.hp -= 25;
-        this.vx *= -0.4; this.vy *= -0.4;
-        if (this.hp <= 0) this.explode(particles, null);
-      }
-    }
-  }
-
-  explode(particles, killerId) {
-    this.isDead = true; this.dockedBase = null;
-    if (killerId !== null && killerId !== undefined) {
-      ships[killerId].kills++;
-    }
-    for (let i = 0; i < 25; i++) {
-      particles.push({
-        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
-      });
-    }
-    setTimeout(() => {
-      if (!matchEnded) this.reset(false);
-    }, 2000);
-  }
-
-  draw() {
-    if (this.isDead) return;
-    ctx.save();
-    ctx.translate(this.x - camera.x, this.y - camera.y);
-    ctx.rotate(this.angle);
-    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-
-    if (this.dockedBase) {
-      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
-      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
-    }
-  }
-}
-
-const ships = [
-  new Ship(0, 500, WORLD.height - 290, '#00ffcc'),
-  new Ship(1, 580, WORLD.height - 290, '#ff3366')
-];
-
-const bullets = [];
-const particles = [];
-
-function syncGameState(data) {
-  if (!data) return;
-  matchTime = data.matchTime !== undefined ? data.matchTime : matchTime;
-  matchEnded = data.matchEnded !== undefined ? data
+  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i
