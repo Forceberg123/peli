@@ -217,14 +217,13 @@ document.getElementById('btn-solo').addEventListener('click', () => {
   requestAnimationFrame(loop);
 });
 
-// ------------ VAIHTELEVA JA AHTAAMPI LUOLASTO ------------
+// Luolasto, tukikohdat ja esteet
 const segW = 30, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 
 for (let i = 0; i < numSegs; i++) {
-  // Siniaaltojen yhdistelmä luo kapeita tunnelikohtia ja laajempia kammiota
   let midPoint = 1500 + Math.sin(i * 0.03) * 600 + Math.cos(i * 0.08) * 300;
-  let caveHeight = 350 + Math.sin(i * 0.05) * 220 + Math.cos(i * 0.12) * 150; // Kapeimmillaan erittäin ahdas
+  let caveHeight = 350 + Math.sin(i * 0.05) * 220 + Math.cos(i * 0.12) * 150;
 
   ceiling.push(Math.max(100, midPoint - caveHeight / 2));
   floor.push(Math.min(WORLD.height - 100, midPoint + caveHeight / 2));
@@ -236,19 +235,17 @@ const bases = [
   { x1: 4200, x2: 4500, y: WORLD.height - 350 }
 ];
 
-// Tasoitetaan maasto tukikohtien kohdalta
 bases.forEach(b => {
   let startI = Math.floor(b.x1 / segW);
   let endI = Math.ceil(b.x2 / segW);
   for (let i = startI; i <= endI; i++) {
     if (i < numSegs) {
       floor[i] = b.y;
-      ceiling[i] = Math.min(ceiling[i], b.y - 450); // Varmistetaan laskeutumistila
+      ceiling[i] = Math.min(ceiling[i], b.y - 450);
     }
   }
 });
 
-// Lisää saarekkeita ja kapeita pylväitä tunnelien esteiksi
 const obstacles = [
   { x: 1000, y: 1300, radius: 110 },
   { x: 1500, y: 1700, radius: 130 },
@@ -261,4 +258,161 @@ const obstacles = [
 function getFloorY(x) {
   let i = Math.floor(x / segW);
   if (i < 0) return floor[0];
-  if (i >= numSegs - 1) return floor
+  if (i >= numSegs - 1) return floor[numSegs - 1];
+  let t = (x % segW) / segW;
+  return floor[i] * (1 - t) + floor[i + 1] * t;
+}
+function getCeilingY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return ceiling[0];
+  if (i >= numSegs - 1) return ceiling[numSegs - 1];
+  let t = (x % segW) / segW;
+  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
+}
+
+class Ship {
+  constructor(x, y, color) {
+    this.startX = x; this.startY = y; this.color = color;
+    this.kills = 0;
+    this.reset();
+  }
+  reset() {
+    this.x = this.startX; this.y = this.startY;
+    this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
+    this.hp = 150; this.fuel = 100;
+    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
+    setRechargeSound(false);
+  }
+  update(bullets, particles) {
+    if (this.isDead || matchEnded) return;
+
+    if (keys['KeyA'] || keys['ArrowLeft']) this.angle -= 0.07;
+    if (keys['KeyD'] || keys['ArrowRight']) this.angle += 0.07;
+
+    if ((keys['KeyW'] || keys['ArrowUp']) && this.fuel > 0) {
+      if (this.dockedBase) { 
+        this.dockedBase = null; 
+        this.vy = -3.0; 
+        setRechargeSound(false);
+      }
+      this.vx += Math.cos(this.angle) * 0.2;
+      this.vy += Math.sin(this.angle) * 0.2;
+      this.fuel = Math.max(0, this.fuel - 0.15);
+
+      particles.push({
+        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
+        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
+      });
+    }
+
+    if (keys['Space'] && this.cooldown <= 0) {
+      bullets.push({
+        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
+        vx: Math.cos(this.angle) * 13, vy: Math.sin(this.angle) * 13, life: 80
+      });
+      this.vx -= Math.cos(this.angle) * 0.35;
+      this.vy -= Math.sin(this.angle) * 0.35;
+
+      playShootSound();
+      this.cooldown = 12;
+    }
+    if (this.cooldown > 0) this.cooldown--;
+
+    if (!this.dockedBase) {
+      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
+      this.x += this.vx; this.y += this.vy;
+      setRechargeSound(false);
+    } else {
+      this.vx = 0; this.vy = 0;
+      this.y = this.dockedBase.y - 10;
+      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
+      if (this.hp < 150 || this.fuel < 100) {
+        setRechargeSound(true);
+        if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+        if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+      } else {
+        setRechargeSound(false);
+      }
+    }
+
+    if (!this.dockedBase && this.vy >= 0) {
+      for (let b of bases) {
+        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
+          if (Math.hypot(this.vx, this.vy) < 4.0) {
+            this.dockedBase = b;
+            this.y = b.y - 10;
+            this.vx = 0; this.vy = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    let ceilY = getCeilingY(this.x);
+    let floorY = getFloorY(this.x);
+    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
+    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
+
+    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
+      let speed = Math.hypot(this.vx, this.vy);
+      if (speed > 4.0 || hitWall) {
+        this.explode(particles);
+      } else {
+        this.hp -= 25;
+        this.vx *= -0.4; this.vy *= -0.4;
+        playBumpSound();
+        if (this.hp <= 0) this.explode(particles);
+      }
+    }
+  }
+
+  explode(particles) {
+    this.isDead = true; this.dockedBase = null;
+    setRechargeSound(false);
+    playExplosionSound();
+    for (let i = 0; i < 25; i++) {
+      particles.push({
+        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
+      });
+    }
+    setTimeout(() => {
+      if (!matchEnded) this.reset();
+    }, 2000);
+  }
+
+  draw() {
+    if (this.isDead) return;
+    ctx.save();
+    ctx.translate(this.x - camera.x, this.y - camera.y);
+    ctx.rotate(this.angle);
+    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
+  }
+}
+
+// Turvallinen aloituspiste (keskellä luolaa)
+const ship = new Ship(500, 1000, '#00ffcc');
+const bullets = [];
+const particles = [];
+
+function loop() {
+  if (!matchEnded) {
+    ship.update(bullets, particles);
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      let b = bullets[i];
+      b.x += b.vx; 
+      b.y += b.vy; 
+      b.vy += 0.04;
+      b.life--;
+      
+      let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+      if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+        bullets.splice(i,
