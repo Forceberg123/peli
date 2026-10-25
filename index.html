@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Tight Caverns</title>
+  <title>Wings Cave Flyer - Complete Game</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -32,20 +32,29 @@
       text-align: center;
     }
     .btn {
-      background: rgba(255,204,0,0.1); border: 2px solid #ffcc00; color: #ffcc00;
-      padding: 14px 28px; font-family: inherit; font-size: 18px; font-weight: bold;
+      background: rgba(0,255,204,0.1); border: 2px solid #00ffcc; color: #00ffcc;
+      padding: 12px 24px; font-family: inherit; font-size: 16px; font-weight: bold;
       cursor: pointer; margin: 8px; transition: 0.2s;
     }
-    .btn:hover { background: #ffcc00; color: #000; }
+    .btn:hover { background: #00ffcc; color: #000; }
+    .btn-solo { background: rgba(255,204,0,0.1); border-color: #ffcc00; color: #ffcc00; }
+    .btn-solo:hover { background: #ffcc00; color: #000; }
+    input {
+      background: #000; border: 1px solid #00ffcc; color: #fff;
+      padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
+      width: 250px;
+    }
+    #status-msg { margin-top: 15px; font-size: 14px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p1-hud" style="color:#00ffcc">P1 HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="timer">Aikaa jäljellä: 60s</div>
-  <div>Ohjaus: WASD / Nuolet + Space</div>
+  <div id="p2-hud" style="color:#ff3366; display:none;">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
 </div>
 
 <div id="game-over">
@@ -56,10 +65,19 @@
 
 <div id="lobby-overlay">
   <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 30px;">Ahtaat tunnelit & vaihteleva maasto</p>
+  <p style="color: #88aacc; margin-bottom: 20px;">Valitse pelimuoto</p>
+  
   <div>
-    <button class="btn" id="btn-solo">PELAA NYT</button>
+    <button class="btn btn-solo" id="btn-solo">Pelaa yksin (Testi)</button>
   </div>
+  <div style="margin-top: 15px; border-top: 1px solid #223344; padding-top: 15px;">
+    <button class="btn" id="btn-host">Luo huone (Host)</button>
+  </div>
+  <div style="margin-top:10px;">
+    <input type="text" id="room-input" placeholder="Syötä Huone-ID tähän">
+    <button class="btn" id="btn-join">Liity peliin</button>
+  </div>
+  <div id="status-msg"></div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -83,7 +101,7 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Web Audio API -äänijärjestelmä
+// ÄÄNIJÄRJESTELMÄ (Web Audio API)
 let audioCtx = null;
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -130,21 +148,16 @@ function playExplosionSound() {
     let bufferSize = audioCtx.sampleRate * 0.5;
     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     let data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
     let noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
-
     let filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(300, audioCtx.currentTime);
     filter.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.5);
-
     let gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
@@ -152,8 +165,7 @@ function playExplosionSound() {
   } catch (e) {}
 }
 
-let rechargeOsc = null;
-let rechargeGain = null;
+let rechargeOsc = null, rechargeGain = null;
 function setRechargeSound(active) {
   try {
     initAudio();
@@ -167,24 +179,27 @@ function setRechargeSound(active) {
       rechargeGain.connect(audioCtx.destination);
       rechargeOsc.start();
     } else if (!active && rechargeOsc) {
-      rechargeOsc.stop();
-      rechargeOsc.disconnect();
-      rechargeOsc = null;
-      rechargeGain = null;
+      rechargeOsc.stop(); rechargeOsc.disconnect();
+      rechargeOsc = null; rechargeGain = null;
     }
   } catch (e) {}
 }
 
-let matchTime = 60;
-let matchEnded = false;
-let timerInterval = null;
+// VERKKOPELI & MUUTTUJAT
+const peerConfig = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] } };
+let peer = null, conn = null;
+let isHost = false, isSinglePlayer = false;
+let clientInputs = {};
+let loopRunning = false;
+const statusEl = document.getElementById('status-msg');
+
+let matchTime = 60, matchEnded = false, timerInterval = null;
 
 function startTimer() {
   clearInterval(timerInterval);
   matchTime = 60;
   matchEnded = false;
   document.getElementById('game-over').style.display = 'none';
-  
   timerInterval = setInterval(() => {
     if (matchTime > 0) {
       matchTime--;
@@ -199,26 +214,38 @@ function endMatch() {
   clearInterval(timerInterval);
   matchEnded = true;
   setRechargeSound(false);
-  document.getElementById('final-score').innerText = `Kerätyt tapot: ${ship.kills}`;
+  const p1Kills = ships[0].kills, p2Kills = ships[1].kills;
+  const titleEl = document.getElementById('winner-title'), scoreEl = document.getElementById('final-score');
+  
+  if (isSinglePlayer) {
+    titleEl.innerText = "ERÄ PÄÄTTYI!"; titleEl.style.color = "#ffcc00";
+    scoreEl.innerText = `Kerätyt tapot: ${p1Kills}`;
+  } else if (p1Kills > p2Kills) {
+    titleEl.innerText = "PELAAJA 1 VOITTI!"; titleEl.style.color = "#00ffcc";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  } else if (p2Kills > p1Kills) {
+    titleEl.innerText = "PELAAJA 2 VOITTI!"; titleEl.style.color = "#ff3366";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  } else {
+    titleEl.innerText = "TASAPELI!"; titleEl.style.color = "#ffcc00";
+    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
+  }
   document.getElementById('game-over').style.display = 'flex';
 }
 
 function restartMatch() {
-  ship.kills = 0;
-  ship.reset();
-  bullets.length = 0;
-  particles.length = 0;
+  ships[0].kills = 0; ships[1].kills = 0;
+  ships[0].reset(true); ships[1].reset(true);
+  bullets.length = 0; particles.length = 0;
   startTimer();
 }
 
-// Luolasto, tukikohdat ja esteet
+// LUOLASTO
 const segW = 30, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
-
 for (let i = 0; i < numSegs; i++) {
   let midPoint = 1500 + Math.sin(i * 0.03) * 600 + Math.cos(i * 0.08) * 300;
   let caveHeight = 350 + Math.sin(i * 0.05) * 220 + Math.cos(i * 0.12) * 150;
-
   ceiling.push(Math.max(100, midPoint - caveHeight / 2));
   floor.push(Math.min(WORLD.height - 100, midPoint + caveHeight / 2));
 }
@@ -228,25 +255,17 @@ const bases = [
   { x1: 2300, x2: 2600, y: 1600 },
   { x1: 4200, x2: 4500, y: WORLD.height - 350 }
 ];
-
 bases.forEach(b => {
-  let startI = Math.floor(b.x1 / segW);
-  let endI = Math.ceil(b.x2 / segW);
+  let startI = Math.floor(b.x1 / segW), endI = Math.ceil(b.x2 / segW);
   for (let i = startI; i <= endI; i++) {
-    if (i < numSegs) {
-      floor[i] = b.y;
-      ceiling[i] = Math.min(ceiling[i], b.y - 450);
-    }
+    if (i < numSegs) { floor[i] = b.y; ceiling[i] = Math.min(ceiling[i], b.y - 450); }
   }
 });
 
 const obstacles = [
-  { x: 1000, y: 1300, radius: 110 },
-  { x: 1500, y: 1700, radius: 130 },
-  { x: 1900, y: 1100, radius: 90 },
-  { x: 3100, y: 1600, radius: 150 },
-  { x: 3600, y: 1200, radius: 100 },
-  { x: 4000, y: 1800, radius: 120 }
+  { x: 1000, y: 1300, radius: 110 }, { x: 1500, y: 1700, radius: 130 },
+  { x: 1900, y: 1100, radius: 90 }, { x: 3100, y: 1600, radius: 150 },
+  { x: 3600, y: 1200, radius: 100 }, { x: 4000, y: 1800, radius: 120 }
 ];
 
 function getFloorY(x) {
@@ -265,48 +284,43 @@ function getCeilingY(x) {
 }
 
 class Ship {
-  constructor(x, y, color) {
-    this.startX = x; this.startY = y; this.color = color;
+  constructor(id, x, y, color) {
+    this.id = id; this.startX = x; this.startY = y; this.color = color;
     this.kills = 0;
-    this.reset();
+    this.reset(true);
   }
-  reset() {
+  reset(fullReset = false) {
     this.x = this.startX; this.y = this.startY;
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
     this.hp = 150; this.fuel = 100;
+    if (fullReset) this.kills = 0;
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
     setRechargeSound(false);
   }
-  update(bullets, particles) {
+  update(ctrl, bullets, particles) {
     if (this.isDead || matchEnded) return;
 
-    if (keys['KeyA'] || keys['ArrowLeft']) this.angle -= 0.07;
-    if (keys['KeyD'] || keys['ArrowRight']) this.angle += 0.07;
+    if (ctrl.left) this.angle -= 0.07;
+    if (ctrl.right) this.angle += 0.07;
 
-    if ((keys['KeyW'] || keys['ArrowUp']) && this.fuel > 0) {
-      if (this.dockedBase) { 
-        this.dockedBase = null; 
-        this.vy = -3.0; 
-        setRechargeSound(false);
-      }
+    if (ctrl.thrust && this.fuel > 0) {
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; setRechargeSound(false); }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
-
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
         vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
       });
     }
 
-    if (keys['Space'] && this.cooldown <= 0) {
+    if (ctrl.fire && this.cooldown <= 0) {
       bullets.push({
         x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 13, vy: Math.sin(this.angle) * 13, life: 80
+        vx: Math.cos(this.angle) * 13, vy: Math.sin(this.angle) * 13, owner: this.id, life: 80
       });
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
-
       playShootSound();
       this.cooldown = 12;
     }
@@ -315,109 +329,11 @@ class Ship {
     if (!this.dockedBase) {
       this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
       this.x += this.vx; this.y += this.vy;
-      setRechargeSound(false);
+      if (this.id === 0) setRechargeSound(false);
     } else {
       this.vx = 0; this.vy = 0;
       this.y = this.dockedBase.y - 10;
       this.angle += (-Math.PI / 2 - this.angle) * 0.2;
       if (this.hp < 150 || this.fuel < 100) {
-        setRechargeSound(true);
-        if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
-        if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
-      } else {
-        setRechargeSound(false);
-      }
-    }
-
-    if (!this.dockedBase && this.vy >= 0) {
-      for (let b of bases) {
-        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
-          if (Math.hypot(this.vx, this.vy) < 4.0) {
-            this.dockedBase = b;
-            this.y = b.y - 10;
-            this.vx = 0; this.vy = 0;
-            break;
-          }
-        }
-      }
-    }
-
-    let ceilY = getCeilingY(this.x);
-    let floorY = getFloorY(this.x);
-    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
-    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
-
-    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
-      let speed = Math.hypot(this.vx, this.vy);
-      if (speed > 4.0 || hitWall) {
-        this.explode(particles);
-      } else {
-        this.hp -= 25;
-        this.vx *= -0.4; this.vy *= -0.4;
-        playBumpSound();
-        if (this.hp <= 0) this.explode(particles);
-      }
-    }
-  }
-
-  explode(particles) {
-    this.isDead = true; this.dockedBase = null;
-    setRechargeSound(false);
-    playExplosionSound();
-    for (let i = 0; i < 25; i++) {
-      particles.push({
-        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
-      });
-    }
-    setTimeout(() => {
-      if (!matchEnded) this.reset();
-    }, 2000);
-  }
-
-  draw() {
-    if (this.isDead) return;
-    ctx.save();
-    ctx.translate(this.x - camera.x, this.y - camera.y);
-    ctx.rotate(this.angle);
-    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-
-    if (this.dockedBase) {
-      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
-      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
-    }
-  }
-}
-
-const ship = new Ship(500, 800, '#00ffcc');
-const bullets = [];
-const particles = [];
-
-function loop() {
-  if (!matchEnded) {
-    ship.update(bullets, particles);
-
-    for (let i = bullets.length - 1; i >= 0; i--) {
-      let b = bullets[i];
-      b.x += b.vx; 
-      b.y += b.vy; 
-      b.vy += 0.04;
-      b.life--;
-      
-      let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-      if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-        bullets.splice(i, 1);
-      }
-    }
-
-    for (let i = particles.length - 1; i >= 0; i--) {
-      particles[i].x += particles[i].vx;
-      particles[i].y += particles[i].vy;
-      particles[i].life--;
-      if (particles[i].life <= 0) particles.splice(i, 1);
-    }
-  }
-
-  camera.x += (ship.x - canvas.width / 2 -
+        if (this.id === 0) setRechargeSound(true);
+        if (this.hp < 150) this.hp = Math.min(150,
