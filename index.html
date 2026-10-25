@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Single & Multiplayer</title>
+  <title>Wings Cave Flyer - Singleplayer</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -15,10 +15,7 @@
       background: rgba(5, 8, 15, 0.85); padding: 10px 20px;
       box-sizing: border-box; border-bottom: 1px solid #00ffcc;
     }
-    #timer {
-      font-size: 16px;
-      color: #ffcc00;
-    }
+    #timer { font-size: 16px; color: #ffcc00; }
     #game-over {
       display: none;
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -26,12 +23,8 @@
       flex-direction: column; justify-content: center; align-items: center;
       color: #00ffcc; text-align: center;
     }
-    #game-over h1 {
-      font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc;
-    }
-    #game-over p {
-      font-size: 18px; color: #fff; margin-bottom: 25px;
-    }
+    #game-over h1 { font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc; }
+    #game-over p { font-size: 18px; color: #fff; margin-bottom: 25px; }
     #lobby-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(5, 8, 15, 0.95); z-index: 200;
@@ -39,27 +32,20 @@
       text-align: center;
     }
     .btn {
-      background: rgba(0,255,204,0.1); border: 2px solid #00ffcc; color: #00ffcc;
-      padding: 12px 24px; font-family: inherit; font-size: 16px; font-weight: bold;
+      background: rgba(255,204,0,0.1); border: 2px solid #ffcc00; color: #ffcc00;
+      padding: 14px 28px; font-family: inherit; font-size: 18px; font-weight: bold;
       cursor: pointer; margin: 8px; transition: 0.2s;
     }
-    .btn:hover { background: #00ffcc; color: #000; }
-    input {
-      background: #000; border: 1px solid #00ffcc; color: #fff;
-      padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
-      width: 250px;
-    }
-    #status-msg { margin-top: 15px; font-size: 14px; color: #ffcc00; max-width: 80%; line-height: 1.4; }
+    .btn:hover { background: #ffcc00; color: #000; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">P1 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p1-hud" style="color:#00ffcc">HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="timer">Aikaa jäljellä: 60s</div>
-  <div id="p2-hud" style="color:#ff3366; display:none;">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div>Ohjaus: WASD + Space</div>
 </div>
 
 <div id="game-over">
@@ -70,19 +56,10 @@
 
 <div id="lobby-overlay">
   <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 20px;">Valitse pelimuoto</p>
-  
+  <p style="color: #88aacc; margin-bottom: 30px;">Yksinpelitila (Testi)</p>
   <div>
-    <button class="btn" id="btn-solo" style="background:rgba(255,204,0,0.1); border-color:#ffcc00; color:#ffcc00;">Pelaa yksin (Testi)</button>
+    <button class="btn" id="btn-solo">PELAA NYT</button>
   </div>
-  <div style="margin-top: 15px; border-top: 1px solid #223344; padding-top: 15px;">
-    <button class="btn" id="btn-host">Luo verkkopelihuone (Host)</button>
-  </div>
-  <div style="margin-top:10px;">
-    <input type="text" id="room-input" placeholder="Syötä Huone-ID tähän">
-    <button class="btn" id="btn-join">Liity peliin</button>
-  </div>
-  <div id="status-msg"></div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -97,6 +74,7 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
+
 window.addEventListener('keydown', e => { 
   keys[e.code] = true; 
   if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
@@ -105,24 +83,9 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-const peerConfig = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
-  }
-};
-
-let peer = null, conn = null;
-let isHost = false, isSinglePlayer = false;
-let clientInputs = {};
-const statusEl = document.getElementById('status-msg');
-
 let matchTime = 60;
 let matchEnded = false;
 let timerInterval = null;
-let gameStarted = false;
 
 function startTimer() {
   clearInterval(timerInterval);
@@ -133,8 +96,7 @@ function startTimer() {
   timerInterval = setInterval(() => {
     if (matchTime > 0) {
       matchTime--;
-      let timerEl = document.getElementById('timer');
-      if (timerEl) timerEl.innerText = `Aikaa jäljellä: ${matchTime}s`;
+      document.getElementById('timer').innerText = `Aikaa jäljellä: ${matchTime}s`;
     } else {
       endMatch();
     }
@@ -144,112 +106,259 @@ function startTimer() {
 function endMatch() {
   clearInterval(timerInterval);
   matchEnded = true;
-  
-  const p1Kills = ships[0].kills;
-  const p2Kills = ships[1].kills;
-  
-  const titleEl = document.getElementById('winner-title');
-  const scoreEl = document.getElementById('final-score');
-  
-  if (isSinglePlayer) {
-    titleEl.innerText = "ERÄ PÄÄTTYI!";
-    titleEl.style.color = "#ffcc00";
-    scoreEl.innerText = `Lennon kesto 60s takana!`;
-  } else if (p1Kills > p2Kills) {
-    titleEl.innerText = "PELAAJA 1 VOITTI!";
-    titleEl.style.color = "#00ffcc";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
-  } else if (p2Kills > p1Kills) {
-    titleEl.innerText = "PELAAJA 2 VOITTI!";
-    titleEl.style.color = "#ff3366";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
-  } else {
-    titleEl.innerText = "TASAPELI!";
-    titleEl.style.color = "#ffcc00";
-    scoreEl.innerText = `Tapot - P1: ${p1Kills} | P2: ${p2Kills}`;
-  }
-  
+  document.getElementById('final-score').innerText = `Kerätyt tapot: ${ship.kills}`;
   document.getElementById('game-over').style.display = 'flex';
 }
 
 function restartMatch() {
-  ships[0].kills = 0;
-  ships[1].kills = 0;
-  ships[0].reset(true);
-  ships[1].reset(true);
+  ship.kills = 0;
+  ship.reset();
   bullets.length = 0;
   particles.length = 0;
   startTimer();
 }
 
-// Yksinpelin käynnistys suoraan
-document.getElementById('btn-solo').onclick = () => {
-  isSinglePlayer = true;
-  isHost = true;
+// Suora ja pomminvarma käynnistys napista
+document.getElementById('btn-solo').addEventListener('click', () => {
   document.getElementById('lobby-overlay').style.display = 'none';
-  document.getElementById('status-text').innerText = "YKSINPELI (Testi)";
-  document.getElementById('p2-hud').style.display = 'none';
-  
   startTimer();
-  if (!gameStarted) {
-    gameStarted = true;
-    startLoop();
-  }
-};
-
-document.getElementById('btn-host').onclick = () => {
-  statusEl.innerText = "Luodaan huonetta...";
-  if (peer) peer.destroy();
-  peer = new Peer(peerConfig);
-  peer.on('open', id => {
-    isHost = true;
-    isSinglePlayer = false;
-    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:16px; color:#00ffcc;">${id}</b>`;
-  });
-  peer.on('connection', c => { conn = c; setupConnection(); });
-  peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
-};
-
-document.getElementById('btn-join').onclick = () => {
-  let code = document.getElementById('room-input').value.trim();
-  if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
-  statusEl.innerText = "Yhdistetään...";
-  if (peer) peer.destroy();
-  peer = new Peer(peerConfig);
-  peer.on('open', () => {
-    conn = peer.connect(code, { reliable: true });
-    setupConnection();
-  });
-  peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
-};
-
-function setupConnection() {
-  conn.on('open', () => {
-    isSinglePlayer = false;
-    document.getElementById('lobby-overlay').style.display = 'none';
-    document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
-    document.getElementById('p2-hud').style.display = 'block';
-    startTimer();
-    if (!gameStarted) {
-      gameStarted = true;
-      startLoop();
-    }
-  });
-
-  conn.on('data', data => {
-    if (isHost) {
-      clientInputs = data.inputs || {};
-    } else {
-      syncGameState(data);
-    }
-  });
-
-  conn.on('close', () => { alert("Yhteys katkesi!"); location.reload(); });
-}
+  requestAnimationFrame(loop);
+});
 
 // Luolasto, tukikohdat ja esteet
 const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
   ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
-  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i
+  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
+}
+const bases = [
+  { x1: 400, x2: 700, y: WORLD.height - 280 },
+  { x1: 2000, x2: 2300, y: WORLD.height - 320 },
+  { x1: 3800, x2: 4100, y: WORLD.height - 280 }
+];
+bases.forEach(b => {
+  for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) if (i < numSegs) floor[i] = b.y;
+});
+
+const obstacles = [
+  { x: 1200, y: 1200, radius: 140 },
+  { x: 1600, y: 800, radius: 100 },
+  { x: 2800, y: 1500, radius: 180 },
+  { x: 3400, y: 900, radius: 120 },
+  { x: 4400, y: 1300, radius: 150 }
+];
+
+function getFloorY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return floor[0];
+  if (i >= numSegs - 1) return floor[numSegs - 1];
+  let t = (x % segW) / segW;
+  return floor[i] * (1 - t) + floor[i + 1] * t;
+}
+function getCeilingY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return ceiling[0];
+  if (i >= numSegs - 1) return ceiling[numSegs - 1];
+  let t = (x % segW) / segW;
+  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
+}
+
+class Ship {
+  constructor(x, y, color) {
+    this.startX = x; this.startY = y; this.color = color;
+    this.kills = 0;
+    this.reset();
+  }
+  reset() {
+    this.x = this.startX; this.y = this.startY;
+    this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
+    this.hp = 150; this.fuel = 100;
+    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
+  }
+  update(bullets, particles) {
+    if (this.isDead || matchEnded) return;
+
+    if (keys['KeyA'] || keys['ArrowLeft']) this.angle -= 0.07;
+    if (keys['KeyD'] || keys['ArrowRight']) this.angle += 0.07;
+
+    if ((keys['KeyW'] || keys['ArrowUp']) && this.fuel > 0) {
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
+      this.vx += Math.cos(this.angle) * 0.2;
+      this.vy += Math.sin(this.angle) * 0.2;
+      this.fuel = Math.max(0, this.fuel - 0.15);
+
+      particles.push({
+        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
+        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
+      });
+    }
+
+    if (keys['Space'] && this.cooldown <= 0) {
+      bullets.push({
+        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
+        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12, life: 80
+      });
+      this.cooldown = 12;
+    }
+    if (this.cooldown > 0) this.cooldown--;
+
+    if (!this.dockedBase) {
+      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
+      this.x += this.vx; this.y += this.vy;
+    } else {
+      this.vx = 0; this.vy = 0;
+      this.y = this.dockedBase.y - 10;
+      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
+      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+    }
+
+    if (!this.dockedBase && this.vy >= 0) {
+      for (let b of bases) {
+        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
+          if (Math.hypot(this.vx, this.vy) < 4.0) {
+            this.dockedBase = b;
+            this.y = b.y - 10;
+            this.vx = 0; this.vy = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    let ceilY = getCeilingY(this.x);
+    let floorY = getFloorY(this.x);
+    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
+    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
+
+    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
+      let speed = Math.hypot(this.vx, this.vy);
+      if (speed > 4.0 || hitWall) {
+        this.explode(particles);
+      } else {
+        this.hp -= 25;
+        this.vx *= -0.4; this.vy *= -0.4;
+        if (this.hp <= 0) this.explode(particles);
+      }
+    }
+  }
+
+  explode(particles) {
+    this.isDead = true; this.dockedBase = null;
+    for (let i = 0; i < 25; i++) {
+      particles.push({
+        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
+      });
+    }
+    setTimeout(() => {
+      if (!matchEnded) this.reset();
+    }, 2000);
+  }
+
+  draw() {
+    if (this.isDead) return;
+    ctx.save();
+    ctx.translate(this.x - camera.x, this.y - camera.y);
+    ctx.rotate(this.angle);
+    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
+  }
+}
+
+const ship = new Ship(500, WORLD.height - 290, '#00ffcc');
+const bullets = [];
+const particles = [];
+
+function loop() {
+  if (!matchEnded) {
+    ship.update(bullets, particles);
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      let b = bullets[i];
+      b.x += b.vx; b.y += b.vy; b.life--;
+      let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+      if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+        bullets.splice(i, 1);
+      }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].x += particles[i].vx;
+      particles[i].y += particles[i].vy;
+      particles[i].life--;
+      if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  camera.x += (ship.x - canvas.width / 2 - camera.x) * 0.1;
+  camera.y += (ship.y - canvas.height / 2 - camera.y) * 0.1;
+
+  // Piirto
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
+  for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
+  ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
+
+  ctx.beginPath();
+  for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
+  ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = '#ff3366';
+  ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
+  ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
+
+  ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+  obstacles.forEach(o => {
+    ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  });
+
+  ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
+  bases.forEach(b => {
+    ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
+  });
+
+  particles.forEach(p => {
+    ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
+  });
+
+  ctx.fillStyle = '#ffcc00';
+  bullets.forEach(b => {
+    ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
+  });
+
+  ship.draw();
+
+  // Mini-tutka
+  const mapW = 160, mapH = 90;
+  const mapX = canvas.width - mapW - 20, mapY = 60;
+  ctx.fillStyle = 'rgba(5, 8, 15, 0.8)';
+  ctx.fillRect(mapX, mapY, mapW, mapH);
+  ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+  ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+  if (!ship.isDead) {
+    let sx = mapX + (ship.x / WORLD.width) * mapW;
+    let sy = mapY + (ship.y / WORLD.height) * mapH;
+    ctx.fillStyle = ship.color;
+    ctx.fillRect(sx - 2, sy - 2, 4, 4);
+  }
+
+  document.getElementById('p1-hud').innerText = `HP: ${Math.ceil(ship.hp)} | FUEL: ${Math.ceil(ship.fuel)} | KILLS: ${ship.kills}`;
+
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
