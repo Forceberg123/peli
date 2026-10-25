@@ -75,6 +75,14 @@ const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
 
+window.addEventListener('keydown', e => { 
+  keys[e.code] = true; 
+  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
+    restartMatch();
+  }
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
 // Web Audio API -äänijärjestelmä
 let audioCtx = null;
 function initAudio() {
@@ -167,14 +175,6 @@ function setRechargeSound(active) {
   } catch (e) {}
 }
 
-window.addEventListener('keydown', e => { 
-  keys[e.code] = true; 
-  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
-    restartMatch();
-  }
-});
-window.addEventListener('keyup', e => { keys[e.code] = false; });
-
 let matchTime = 60;
 let matchEnded = false;
 let timerInterval = null;
@@ -210,12 +210,6 @@ function restartMatch() {
   particles.length = 0;
   startTimer();
 }
-
-document.getElementById('btn-solo').addEventListener('click', () => {
-  document.getElementById('lobby-overlay').style.display = 'none';
-  startTimer();
-  requestAnimationFrame(loop);
-});
 
 // Luolasto, tukikohdat ja esteet
 const segW = 30, numSegs = Math.ceil(WORLD.width / segW) + 1;
@@ -397,22 +391,4 @@ class Ship {
   }
 }
 
-// Turvallinen aloituspiste (keskellä luolaa)
-const ship = new Ship(500, 1000, '#00ffcc');
-const bullets = [];
-const particles = [];
-
-function loop() {
-  if (!matchEnded) {
-    ship.update(bullets, particles);
-
-    for (let i = bullets.length - 1; i >= 0; i--) {
-      let b = bullets[i];
-      b.x += b.vx; 
-      b.y += b.vy; 
-      b.vy += 0.04;
-      b.life--;
-      
-      let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-      if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-        bullets.splice(i,
+const ship = new Ship(500,
