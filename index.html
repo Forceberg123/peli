@@ -95,6 +95,7 @@ let timerInterval = null;
 function startTimer() {
   clearInterval(timerInterval);
   matchTime = 60;
+  document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
   if (isHost) {
     timerInterval = setInterval(() => {
       if (matchTime > 0) {
