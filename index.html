@@ -59,12 +59,12 @@
 <div id="hud">
   <div id="p1-hud" style="color:#00ffcc">P1 HP: 150 | FUEL: 100 | KILLS: 0</div>
   <div id="timer">Aikaa jäljellä: 60s</div>
-  <div id="p2-hud" style="color:#ff3366">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p2-hud" style="color:#ff3366; display:none;">P2 HP: 150 | FUEL: 100 | KILLS: 0</div>
 </div>
 
 <div id="game-over">
-  <h1 id="winner-title">VOITTAJA!</h1>
-  <p id="final-score">P1: 0 - P2: 0</p>
+  <h1 id="winner-title">ERÄ PÄÄTTYI!</h1>
+  <p id="final-score">Tapot: 0</p>
   <p style="font-size: 14px; color: #88aacc;">Paina Space tai Enter aloittaaksesi uuden erän</p>
 </div>
 
@@ -122,6 +122,7 @@ const statusEl = document.getElementById('status-msg');
 let matchTime = 60;
 let matchEnded = false;
 let timerInterval = null;
+let gameStarted = false;
 
 function startTimer() {
   clearInterval(timerInterval);
@@ -187,8 +188,12 @@ document.getElementById('btn-solo').onclick = () => {
   isHost = true;
   document.getElementById('lobby-overlay').style.display = 'none';
   document.getElementById('status-text').innerText = "YKSINPELI (Testi)";
+  document.getElementById('p2-hud').style.display = 'none';
   startTimer();
-  startLoop();
+  if (!gameStarted) {
+    gameStarted = true;
+    startLoop();
+  }
 };
 
 document.getElementById('btn-host').onclick = () => {
@@ -222,8 +227,12 @@ function setupConnection() {
     isSinglePlayer = false;
     document.getElementById('lobby-overlay').style.display = 'none';
     document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
+    document.getElementById('p2-hud').style.display = 'block';
     startTimer();
-    startLoop();
+    if (!gameStarted) {
+      gameStarted = true;
+      startLoop();
+    }
   });
 
   conn.on('data', data => {
@@ -401,36 +410,4 @@ const particles = [];
 function syncGameState(data) {
   if (!data) return;
   matchTime = data.matchTime !== undefined ? data.matchTime : matchTime;
-  matchEnded = data.matchEnded !== undefined ? data.matchEnded : matchEnded;
-  
-  if (matchEnded && document.getElementById('game-over').style.display !== 'flex') {
-    endMatch();
-  } else if (!matchEnded && document.getElementById('game-over').style.display === 'flex') {
-    document.getElementById('game-over').style.display = 'none';
-  }
-
-  if (data.ships) {
-    data.ships.forEach((s, idx) => {
-      ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
-      ships[idx].hp = s.hp; ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-      ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
-    });
-  }
-  if (data.bullets) bullets.splice(0, bullets.length, ...data.bullets);
-  if (data.particles) particles.splice(0, particles.length, ...data.particles);
-}
-
-function startLoop() {
-  function loop() {
-    if ((isHost || isSinglePlayer) && !matchEnded) {
-      let p1Ctrl = { 
-        left: keys['KeyA']||keys['ArrowLeft'], 
-        right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'], 
-        fire: keys['Space'] 
-      };
-      
-      let p2Ctrl = isSinglePlayer ? { left: false, right: false, thrust: false, fire: false } : {
-        left: clientInputs.left || false,
-        right: clientInputs.right || false,
-        thrust: clientInputs.thrust ||
+  matchEnded = data.matchEnded !== undefined ? data
