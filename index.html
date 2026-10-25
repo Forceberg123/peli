@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Multiplayer with Shooting</title>
+  <title>Wings Cave Flyer - Multiplayer</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -95,16 +95,24 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Äänijärjestelmä (Web Audio API)
+// Äänijärjestelmä suojatusti
 let audioCtx = null;
 function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  try {
+    if (!audioCtx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) audioCtx = new AudioCtx();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  } catch(e) {}
 }
 
 function playShootSound() {
   try {
     initAudio();
+    if (!audioCtx) return;
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
     osc.type = 'sawtooth';
@@ -120,6 +128,7 @@ function playShootSound() {
 function playBumpSound() {
   try {
     initAudio();
+    if (!audioCtx) return;
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
     osc.type = 'triangle';
@@ -135,6 +144,7 @@ function playBumpSound() {
 function playExplosionSound() {
   try {
     initAudio();
+    if (!audioCtx) return;
     let bufferSize = audioCtx.sampleRate * 0.5;
     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     let data = buffer.getChannelData(0);
@@ -157,6 +167,7 @@ let rechargeOsc = null, rechargeGain = null;
 function setRechargeSound(active) {
   try {
     initAudio();
+    if (!audioCtx) return;
     if (active && !rechargeOsc) {
       rechargeOsc = audioCtx.createOscillator();
       rechargeGain = audioCtx.createGain();
@@ -232,28 +243,40 @@ function restartMatch() {
 }
 
 document.getElementById('btn-host').onclick = () => {
+  initAudio();
   statusEl.innerText = "Luodaan huonetta...";
-  if (peer) peer.destroy();
-  peer = new Peer(peerConfig);
-  peer.on('open', id => {
-    isHost = true;
-    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
-  });
-  peer.on('connection', c => { conn = c; setupConnection(); });
-  peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
+  
+  try {
+    if (peer) peer.destroy();
+    peer = new Peer(peerConfig);
+    peer.on('open', id => {
+      isHost = true;
+      statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+    });
+    peer.on('connection', c => { conn = c; setupConnection(); });
+    peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
+  } catch(e) {
+    statusEl.innerText = "Virhe alustettaessa verkkoa.";
+  }
 };
 
 document.getElementById('btn-join').onclick = () => {
+  initAudio();
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
   statusEl.innerText = "Yhdistetään...";
-  if (peer) peer.destroy();
-  peer = new Peer(peerConfig);
-  peer.on('open', () => {
-    conn = peer.connect(code, { reliable: true });
-    setupConnection();
-  });
-  peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
+  
+  try {
+    if (peer) peer.destroy();
+    peer = new Peer(peerConfig);
+    peer.on('open', () => {
+      conn = peer.connect(code, { reliable: true });
+      setupConnection();
+    });
+    peer.on('error', err => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
+  } catch(e) {
+    statusEl.innerText = "Virhe alustettaessa verkkoa.";
+  }
 };
 
 function setupConnection() {
@@ -324,7 +347,7 @@ class Ship {
     this.x = this.startX; this.y = this.startY;
     this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
     this.hp = 150; this.fuel = 100;
-    if (fullReset) this.kills = 0; // Tapot säilyvät tavallisessa kuolemassa!
+    if (fullReset) this.kills = 0;
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
     if (this.id === (isHost ? 0 : 1)) setRechargeSound(false);
   }
@@ -352,8 +375,202 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
-      // Rekyyli
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
       if (this.id === (isHost ? 0 : 1)) playShootSound();
-      this
+      this.cooldown = 12;
+    }
+    if (this.cooldown > 0) this.cooldown--;
+
+    if (!this.dockedBase) {
+      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
+      this.x += this.vx; this.y += this.vy;
+      if (this.id === (isHost ? 0 : 1)) setRechargeSound(false);
+    } else {
+      this.vx = 0; this.vy = 0;
+      this.y = this.dockedBase.y - 10;
+      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
+      if (this.hp < 150 || this.fuel < 100) {
+        if (this.id === (isHost ? 0 : 1)) setRechargeSound(true);
+        if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+        if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+      } else {
+        if (this.id === (isHost ? 0 : 1)) setRechargeSound(false);
+      }
+    }
+
+    if (!this.dockedBase && this.vy >= 0) {
+      for (let b of bases) {
+        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
+          if (Math.hypot(this.vx, this.vy) < 4.0) {
+            this.dockedBase = b;
+            this.y = b.y - 10;
+            this.vx = 0; this.vy = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    let ceilY = getCeilingY(this.x);
+    let floorY = getFloorY(this.x);
+    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
+    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
+
+    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
+      let speed = Math.hypot(this.vx, this.vy);
+      if (speed > 4.0 || hitWall) {
+        this.explode(particles, null);
+      } else {
+        this.hp -= 25;
+        this.vx *= -0.4; this.vy *= -0.4;
+        if (this.id === (isHost ? 0 : 1)) playBumpSound();
+        if (this.hp <= 0) this.explode(particles, null);
+      }
+    }
+  }
+
+  explode(particles, killerId) {
+    this.isDead = true; this.dockedBase = null;
+    if (this.id === (isHost ? 0 : 1)) {
+      setRechargeSound(false);
+      playExplosionSound();
+    }
+    if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
+    for (let i = 0; i < 25; i++) {
+      particles.push({
+        x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
+      });
+    }
+    setTimeout(() => {
+      if (!matchEnded) this.reset(false);
+    }, 2000);
+  }
+
+  draw() {
+    if (this.isDead) return;
+    ctx.save();
+    ctx.translate(this.x - camera.x, this.y - camera.y);
+    ctx.rotate(this.angle);
+    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
+  }
+}
+
+const ships = [
+  new Ship(0, 500, WORLD.height - 290, '#00ffcc'),
+  new Ship(1, 580, WORLD.height - 290, '#ff3366')
+];
+
+const bullets = [];
+const particles = [];
+
+function syncGameState(data) {
+  if (!data) return;
+  matchTime = data.matchTime !== undefined ? data.matchTime : matchTime;
+  document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+  
+  if (data.matchEnded && !matchEnded) {
+    endMatch();
+  } else if (!data.matchEnded && matchEnded) {
+    matchEnded = false;
+    document.getElementById('game-over').style.display = 'none';
+  }
+
+  if (data.ships) {
+    data.ships.forEach((s, idx) => {
+      ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
+      ships[idx].hp = s.hp; ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+      ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
+    });
+  }
+  if (data.bullets) bullets.splice(0, bullets.length, ...data.bullets);
+  if (data.particles) particles.splice(0, particles.length, ...data.particles);
+}
+
+function startLoop() {
+  function loop() {
+    if (isHost) {
+      let p1Ctrl = { 
+        left: keys['KeyA']||keys['ArrowLeft'], 
+        right: keys['KeyD']||keys['ArrowRight'], 
+        thrust: keys['KeyW']||keys['ArrowUp'], 
+        fire: keys['Space'] 
+      };
+      let p2Ctrl = {
+        left: clientInputs.left || false,
+        right: clientInputs.right || false,
+        thrust: clientInputs.thrust || false,
+        fire: clientInputs.fire || false
+      };
+
+      ships[0].update(p1Ctrl, bullets, particles);
+      ships[1].update(p2Ctrl, bullets, particles);
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.vx; b.y += b.vy; b.vy += 0.04;
+        b.life--;
+        let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+        if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+          bullets.splice(i, 1);
+          continue;
+        }
+        for (let s of ships) {
+          if (!s.isDead && s.id !== b.owner) {
+            if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
+              s.hp -= 25;
+              if (s.hp <= 0) s.explode(particles, b.owner);
+              bullets.splice(i, 1);
+              break;
+            }
+          }
+        }
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].x += particles[i].vx;
+        particles[i].y += particles[i].vy;
+        particles[i].life--;
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+
+      if (conn && conn.open) {
+        conn.send({
+          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
+          bullets: bullets,
+          particles: particles,
+          matchTime: matchTime,
+          matchEnded: matchEnded
+        });
+      }
+    } else {
+      let myCtrl = { 
+        left: keys['KeyA']||keys['ArrowLeft'], 
+        right: keys['KeyD']||keys['ArrowRight'], 
+        thrust: keys['KeyW']||keys['ArrowUp'], 
+        fire: keys['Space'] || keys['Enter'] 
+      };
+      let sendData = { inputs: myCtrl };
+      if (matchEnded && (keys['Space'] || keys['Enter'])) {
+        sendData.restart = true;
+      }
+      if (conn && conn.open) conn.send(sendData);
+    }
+
+    let myShip = isHost ? ships[0] : ships[1];
+    camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
+    camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
