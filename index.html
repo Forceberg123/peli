@@ -2,7 +2,7 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Multiplayer with Shooting</title>
+  <title>Wings Cave Flyer - 4 Player Multiplayer</title>
   <style>
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
@@ -11,11 +11,20 @@
     #hud {
       position: fixed; top: 0; left: 0; width: 100%;
       display: flex; justify-content: space-between; align-items: center;
-      font-size: 14px; font-weight: bold; z-index: 100;
-      background: rgba(5, 8, 15, 0.85); padding: 10px 20px;
+      font-size: 12px; font-weight: bold; z-index: 100;
+      background: rgba(5, 8, 15, 0.85); padding: 8px 15px;
       box-sizing: border-box; border-bottom: 1px solid #00ffcc;
     }
     #timer { font-size: 16px; color: #ffcc00; }
+    #game-over {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.95); z-index: 300;
+      flex-direction: column; justify-content: center; align-items: center;
+      color: #00ffcc; text-align: center;
+    }
+    #game-over h1 { font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px #00ffcc; }
+    #game-over p { font-size: 18px; color: #fff; margin-bottom: 25px; }
     #lobby-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(5, 8, 15, 0.95); z-index: 200;
@@ -41,15 +50,23 @@
 <body>
 
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">P1 (WASD+Space) HP: 150 | FUEL: 100 | KILLS: 0</div>
-  <div id="status-text" style="color:#ffcc00">Odotetaan yhteyttä...</div>
+  <div id="p1-hud" style="color:#00ffcc">P1: HP:150 | K:0</div>
+  <div id="p2-hud" style="color:#ff3366">P2: HP:150 | K:0</div>
+  <div id="p3-hud" style="color:#00ff66">P3: HP:150 | K:0</div>
+  <div id="p4-hud" style="color:#ffcc00">P4: HP:150 | K:0</div>
   <div id="timer">Aikaa: 60s</div>
-  <div id="p2-hud" style="color:#ff3366">P2 (Nuolet+Enter) HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="status-text" style="color:#fff">Odotetaan...</div>
+</div>
+
+<div id="game-over">
+  <h1 id="winner-title">ERÄ PÄÄTTYI!</h1>
+  <p id="final-score">Tapot: 0</p>
+  <p style="font-size: 14px; color: #88aacc;">Paina Space tai Enter aloittaaksesi uuden erän</p>
 </div>
 
 <div id="lobby-overlay">
-  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER</h1>
-  <p style="color: #88aacc; margin-bottom: 25px;">Verkkopeli (P2P WebRTC)</p>
+  <h1 style="text-shadow:0 0 10px #00ffcc; margin-bottom: 5px;">WINGS CAVE FLYER - 4P</h1>
+  <p style="color: #88aacc; margin-bottom: 25px;">Moninpeli (2-4 Pelaajaa)</p>
   <div>
     <button class="btn" id="btn-host">Luo huone (Host)</button>
   </div>
@@ -72,7 +89,13 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.code] = true; });
+
+window.addEventListener('keydown', e => { 
+  keys[e.code] = true; 
+  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
+    restartMatch();
+  }
+});
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 const peerConfig = {
@@ -84,26 +107,59 @@ const peerConfig = {
   }
 };
 
-let peer = null, conn = null;
+let peer = null;
 let isHost = false;
-let clientInputs = {};
-const statusEl = document.getElementById('status-msg');
+let myPlayerIndex = 0; // Host on P1 (0), liittyjät ovat 1, 2 tai 3 (P2, P3, P4)
+let clientConnections = []; // Isännällä lista kaikkien liittyjien yhteyksistä
+let hostConnection = null;   // Liittyjällä yhteys isäntään
+let clientInputs = {};       // Isännällä muisti liittyjien ohjaimista
 
 let matchTime = 60;
+let matchEnded = false;
 let timerInterval = null;
 
 function startTimer() {
   clearInterval(timerInterval);
   matchTime = 60;
-  document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+  matchEnded = false;
+  document.getElementById('game-over').style.display = 'none';
   if (isHost) {
     timerInterval = setInterval(() => {
       if (matchTime > 0) {
         matchTime--;
-        document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+      } else {
+        endMatch();
       }
     }, 1000);
   }
+}
+
+function endMatch() {
+  clearInterval(timerInterval);
+  matchEnded = true;
+  
+  // Etsitään eniten tappoja saanut
+  let maxKills = -1;
+  let winnerIdx = 0;
+  ships.forEach((s, idx) => {
+    if (s.kills > maxKills) { maxKills = s.kills; winnerIdx = idx; }
+  });
+
+  const colors = ["#00ffcc", "#ff3366", "#00ff66", "#ffcc00"];
+  const titleEl = document.getElementById('winner-title');
+  const scoreEl = document.getElementById('final-score');
+  
+  titleEl.innerText = `PELAAJA ${winnerIdx + 1} VOITTI!`;
+  titleEl.style.color = colors[winnerIdx];
+  scoreEl.innerText = `P1: ${ships[0].kills} | P2: ${ships[1].kills} | P3: ${ships[2].kills} | P4: ${ships[3].kills}`;
+  document.getElementById('game-over').style.display = 'flex';
+}
+
+function restartMatch() {
+  if (!isHost) return;
+  ships.forEach(s => { s.kills = 0; s.reset(); });
+  bullets.length = 0; particles.length = 0;
+  startTimer();
 }
 
 document.getElementById('btn-host').onclick = () => {
@@ -112,9 +168,39 @@ document.getElementById('btn-host').onclick = () => {
   peer = new Peer(peerConfig);
   peer.on('open', id => {
     isHost = true;
-    statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverillesi:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
+    myPlayerIndex = 0;
+    statusEl.innerHTML = `HUONE LUOTU (P1)!<br>Kopioi koodi kavereille:<br><b style="font-size:18px; color:#00ffcc;">${id}</b>`;
   });
-  peer.on('connection', c => { conn = c; setupConnection(); });
+  
+  // Isäntä ottaa vastaan useamman yhteyden (maksimissaan 3 liityjää -> P2, P3, P4)
+  peer.on('connection', c => {
+    if (clientConnections.length >= 3) {
+      c.close();
+      return;
+    }
+    let assignedIndex = clientConnections.length + 1; // 1, 2 tai 3
+    clientConnections.push({ conn: c, index: assignedIndex });
+    
+    c.on('open', () => {
+      // Kerrotaan liittyjälle mikä pelaaja hän on
+      c.send({ type: 'assign', playerIndex: assignedIndex });
+      document.getElementById('status-text').innerText = `Pelaajia yhdistetty: ${clientConnections.length + 1}/4`;
+      if (clientConnections.length === 1 && !timerInterval) {
+        startTimer();
+        startLoop();
+      }
+    });
+
+    c.on('data', data => {
+      clientInputs[assignedIndex] = data.inputs || {};
+      if (data.restart) restartMatch();
+    });
+
+    c.on('close', () => {
+      clientConnections = clientConnections.filter(item => item.conn !== c);
+    });
+  });
+
   peer.on('error', err => { statusEl.innerText = "Virhe: " + err.type; });
 };
 
@@ -124,31 +210,29 @@ document.getElementById('btn-join').onclick = () => {
   statusEl.innerText = "Yhdistetään...";
   if (peer) peer.destroy();
   peer = new Peer(peerConfig);
+  
   peer.on('open', () => {
-    conn = peer.connect(code, { reliable: true });
-    setupConnection();
+    hostConnection = peer.connect(code, { reliable: true });
+    
+    hostConnection.on('open', () => {
+      document.getElementById('lobby-overlay').style.display = 'none';
+    });
+
+    hostConnection.on('data', data => {
+      if (data.type === 'assign') {
+        myPlayerIndex = data.playerIndex;
+        document.getElementById('status-text').innerText = `Olet Pelaaja ${myPlayerIndex + 1}`;
+        startLoop();
+      } else {
+        syncGameState(data);
+      }
+    });
+
+    hostConnection.on('close', () => { alert("Yhteys isäntään katkesi!"); location.reload(); });
   });
+
   peer.on('error', () => { statusEl.innerText = "Yhteysvirhe: Tarkista koodi!"; });
 };
-
-function setupConnection() {
-  conn.on('open', () => {
-    document.getElementById('lobby-overlay').style.display = 'none';
-    document.getElementById('status-text').innerText = isHost ? "ISÄNTÄ (P1)" : "LIITTYNYT (P2)";
-    startTimer();
-    startLoop();
-  });
-
-  conn.on('data', data => {
-    if (isHost) {
-      clientInputs = data.inputs || {};
-    } else {
-      syncGameState(data);
-    }
-  });
-
-  conn.on('close', () => { alert("Yhteys katkesi!"); location.reload(); });
-}
 
 // Luolasto, tukikohdat ja esteet
 const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
@@ -201,7 +285,7 @@ class Ship {
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
   update(ctrl, bullets, particles) {
-    if (this.isDead) return;
+    if (this.isDead || matchEnded) return;
 
     if (ctrl.left) this.angle -= 0.07;
     if (ctrl.right) this.angle += 0.07;
@@ -224,6 +308,8 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
+      this.vx -= Math.cos(this.angle) * 0.35;
+      this.vy -= Math.sin(this.angle) * 0.35;
       this.cooldown = 12;
     }
     if (this.cooldown > 0) this.cooldown--;
@@ -239,7 +325,6 @@ class Ship {
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
     }
 
-    // Laskeutuminen tukikohtaan
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
@@ -253,7 +338,6 @@ class Ship {
       }
     }
 
-    // Törmäykset
     let ceilY = getCeilingY(this.x);
     let floorY = getFloorY(this.x);
     let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
@@ -279,7 +363,9 @@ class Ship {
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
       });
     }
-    setTimeout(() => this.reset(), 2000);
+    setTimeout(() => {
+      if (!matchEnded) this.reset();
+    }, 2000);
   }
 
   draw() {
@@ -291,17 +377,15 @@ class Ship {
     ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.restore();
-
-    if (this.dockedBase) {
-      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
-      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
-    }
   }
 }
 
+// 4 alusta omiin aloituspisteisiinsä tukikohtien lähelle
 const ships = [
-  new Ship(0, 500, WORLD.height - 290, '#00ffcc'),
-  new Ship(1, 580, WORLD.height - 290, '#ff3366')
+  new Ship(0, 480, WORLD.height - 290, '#00ffcc'), // P1 (Turkoosi)
+  new Ship(1, 530, WORLD.height - 290, '#ff3366'), // P2 (Vaaleanpunainen)
+  new Ship(2, 580, WORLD.height - 290, '#00ff66'), // P3 (Vihreä)
+  new Ship(3, 630, WORLD.height - 290, '#ffcc00')  // P4 (Keltainen)
 ];
 
 const bullets = [];
@@ -313,6 +397,15 @@ function syncGameState(data) {
     matchTime = data.matchTime;
     document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
   }
+  
+  if (data.matchEnded && !matchEnded) {
+    matchEnded = true;
+    endMatch();
+  } else if (!data.matchEnded && matchEnded) {
+    matchEnded = false;
+    document.getElementById('game-over').style.display = 'none';
+  }
+
   if (data.ships) {
     data.ships.forEach((s, idx) => {
       ships[idx].x = s.x; ships[idx].y = s.y; ships[idx].angle = s.angle;
@@ -326,70 +419,77 @@ function syncGameState(data) {
 
 function startLoop() {
   function loop() {
+    let myCtrl = { 
+      left: keys['KeyA']||keys['ArrowLeft'], 
+      right: keys['KeyD']||keys['ArrowRight'], 
+      thrust: keys['KeyW']||keys['ArrowUp'], 
+      fire: keys['Space'] || keys['Enter'] 
+    };
+
     if (isHost) {
-      let p1Ctrl = { 
-        left: keys['KeyA']||keys['ArrowLeft'], 
-        right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'], 
-        fire: keys['Space'] 
-      };
-      let p2Ctrl = {
-        left: clientInputs.left || false,
-        right: clientInputs.right || false,
-        thrust: clientInputs.thrust || false,
-        fire: clientInputs.fire || false
-      };
+      // Isäntä ohjaa P1
+      ships[0].update(myCtrl, bullets, particles);
 
-      ships[0].update(p1Ctrl, bullets, particles);
-      ships[1].update(p2Ctrl, bullets, particles);
+      // Päivitetään liittyjien alukset (P2, P3, P4)
+      for (let i = 1; i <= 3; i++) {
+        let ctrl = clientInputs[i] || {};
+        ships[i].update(ctrl, bullets, particles);
+      }
 
-      // Ammukset
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i];
-        b.x += b.vx; b.y += b.vy; b.life--;
-        let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-        if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-          bullets.splice(i, 1);
-          continue;
-        }
-        for (let s of ships) {
-          if (!s.isDead && s.id !== b.owner) {
-            if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
-              s.hp -= 25;
-              if (s.hp <= 0) s.explode(particles, b.owner);
-              bullets.splice(i, 1);
-              break;
+      if (!matchEnded) {
+        // Ammukset ja törmäykset
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          let b = bullets[i];
+          b.x += b.vx; b.y += b.vy; b.vy += 0.04; b.life--;
+          let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+          if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+            bullets.splice(i, 1);
+            continue;
+          }
+          for (let s of ships) {
+            if (!s.isDead && s.id !== b.owner) {
+              if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
+                s.hp -= 25;
+                if (s.hp <= 0) s.explode(particles, b.owner);
+                bullets.splice(i, 1);
+                break;
+              }
             }
           }
         }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+          particles[i].x += particles[i].vx;
+          particles[i].y += particles[i].vy;
+          particles[i].life--;
+          if (particles[i].life <= 0) particles.splice(i, 1);
+        }
       }
 
-      for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].x += particles[i].vx;
-        particles[i].y += particles[i].vy;
-        particles[i].life--;
-        if (particles[i].life <= 0) particles.splice(i, 1);
-      }
+      // Lähetetään tila kaikille liittyjille
+      clientConnections.forEach(item => {
+        if (item.conn && item.conn.open) {
+          item.conn.send({
+            ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
+            bullets: bullets,
+            particles: particles,
+            matchTime: matchTime,
+            matchEnded: matchEnded
+          });
+        }
+      });
 
-      if (conn && conn.open) {
-        conn.send({
-          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
-          bullets: bullets,
-          particles: particles,
-          matchTime: matchTime
-        });
-      }
     } else {
-      let myCtrl = { 
-        left: keys['KeyA']||keys['ArrowLeft'], 
-        right: keys['KeyD']||keys['ArrowRight'], 
-        thrust: keys['KeyW']||keys['ArrowUp'], 
-        fire: keys['Space'] || keys['Enter'] 
-      };
-      if (conn && conn.open) conn.send({ inputs: myCtrl });
+      // Liittyjä lähettää omat kontrollinsa isännälle
+      let sendData = { inputs: myCtrl };
+      if (matchEnded && (keys['Space'] || keys['Enter'])) {
+        sendData.restart = true;
+      }
+      if (hostConnection && hostConnection.open) hostConnection.send(sendData);
     }
 
-    let myShip = isHost ? ships[0] : ships[1];
+    // Kamera seuraa omaa alusta
+    let myShip = ships[myPlayerIndex];
     camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
     camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
 
@@ -432,9 +532,9 @@ function startLoop() {
 
     ships.forEach(s => s.draw());
 
-    // MINIKARTTA (PIKKUKARTTA)
+    // MINIKARTTA
     const mapW = 180, mapH = 110;
-    const mapX = canvas.width - mapW - 20, mapY = 60;
+    const mapX = canvas.width - mapW - 20, mapY = 50;
 
     ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
     ctx.fillRect(mapX, mapY, mapW, mapH);
@@ -442,8 +542,6 @@ function startLoop() {
     ctx.strokeRect(mapX, mapY, mapW, mapH);
 
     ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
-    
-    // Katto
     ctx.beginPath();
     for (let i = 0; i < numSegs; i += 2) {
       let mx = mapX + (i * segW / WORLD.width) * mapW;
@@ -452,7 +550,6 @@ function startLoop() {
     }
     ctx.stroke();
 
-    // Lattia
     ctx.beginPath();
     for (let i = 0; i < numSegs; i += 2) {
       let mx = mapX + (i * segW / WORLD.width) * mapW;
@@ -461,25 +558,6 @@ function startLoop() {
     }
     ctx.stroke();
 
-    // Esteet
-    ctx.fillStyle = 'rgba(0, 255, 204, 0.5)';
-    obstacles.forEach(o => {
-      let mx = mapX + (o.x / WORLD.width) * mapW;
-      let my = mapY + (o.y / WORLD.height) * mapH;
-      let mr = (o.radius / WORLD.width) * mapW;
-      ctx.beginPath(); ctx.arc(mx, my, Math.max(1, mr), 0, Math.PI * 2); ctx.fill();
-    });
-
-    // Tukikohdat
-    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 2;
-    bases.forEach(b => {
-      let mx1 = mapX + (b.x1 / WORLD.width) * mapW;
-      let mx2 = mapX + (b.x2 / WORLD.width) * mapW;
-      let my = mapY + (b.y / WORLD.height) * mapH;
-      ctx.beginPath(); ctx.moveTo(mx1, my); ctx.lineTo(mx2, my); ctx.stroke();
-    });
-
-    // Pelaajat
     ships.forEach(s => {
       if (!s.isDead) {
         let sx = mapX + (s.x / WORLD.width) * mapW;
@@ -489,8 +567,11 @@ function startLoop() {
       }
     });
 
-    document.getElementById('p1-hud').innerText = `P1 HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
-    document.getElementById('p2-hud').innerText = `P2 HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
+    // Päivitetään HUD kaikille 4 pelaajalle
+    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} K:${ships[0].kills}`;
+    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} K:${ships[1].kills}`;
+    document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} K:${ships[2].kills}`;
+    document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} K:${ships[3].kills}`;
 
     requestAnimationFrame(loop);
   }
