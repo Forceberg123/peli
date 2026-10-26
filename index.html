@@ -144,9 +144,10 @@
   <div id="p1-hud" style="color:#00ffcc">P1 HP:150 | FUEL:100 | K:0</div>
   <div id="p2-hud" style="color:#ff3366">P2 HP:150 | FUEL:100 | K:0</div>
   <div id="p3-hud" style="color:#00ff66; display:none;">P3 HP:150 | FUEL:100 | K:0</div>
-  <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HP:150 | FUEL:100 | K:0</div>
+  <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HUD</div>
   <div id="timer">Aikaa: 60s</div>
   <div>
+    <span id="cam-info" style="font-size:11px; color:#88aacc; margin-right:8px;"></span>
     <button class="btn" onclick="showMenu()">Valikko</button>
     <button class="btn" id="btn-restart" onclick="restartMatch()">Uusi erä</button>
   </div>
@@ -467,35 +468,39 @@ class Ship {
   update(ctrl, bullets, particles) {
     if (this.isDead || matchEnded || !gameStarted) return;
 
-    if (ctrl.left) this.angle -= 0.07;
-    if (ctrl.right) this.angle += 0.07;
+    // Swift handling / turning speed
+    if (ctrl.left) this.angle -= 0.085;
+    if (ctrl.right) this.angle += 0.085;
 
+    // Increased thrust power for faster acceleration
     if (ctrl.thrust && this.fuel > 0) {
-      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
-      this.vx += Math.cos(this.angle) * 0.2;
-      this.vy += Math.sin(this.angle) * 0.2;
-      this.fuel = Math.max(0, this.fuel - 0.0375);
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -4.0; }
+      this.vx += Math.cos(this.angle) * 0.38;
+      this.vy += Math.sin(this.angle) * 0.38;
+      this.fuel = Math.max(0, this.fuel - 0.04);
 
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
-        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
+        vx: -Math.cos(this.angle) * 3, vy: -Math.sin(this.angle) * 3, life: 12, color: '#ffaa00'
       });
     }
 
     if (ctrl.fire && this.cooldown <= 0) {
       bullets.push({
         x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
+        vx: Math.cos(this.angle) * 15, vy: Math.sin(this.angle) * 15,
         owner: this.id, life: 80
       });
-      this.vx -= Math.cos(this.angle) * 0.35;
-      this.vy -= Math.sin(this.angle) * 0.35;
-      this.cooldown = 12;
+      this.vx -= Math.cos(this.angle) * 0.45;
+      this.vy -= Math.sin(this.angle) * 0.45;
+      this.cooldown = 10;
     }
     if (this.cooldown > 0) this.cooldown--;
 
     if (!this.dockedBase) {
-      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
+      this.vy += 0.06; 
+      // Slightly lower air resistance for higher top speed
+      this.vx *= 0.992; this.vy *= 0.992;
       this.x += this.vx; this.y += this.vy;
     } else {
       this.vx = 0; this.vy = 0;
@@ -508,7 +513,7 @@ class Ship {
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
-          if (Math.hypot(this.vx, this.vy) < 4.0) {
+          if (Math.hypot(this.vx, this.vy) < 5.0) {
             this.dockedBase = b;
             this.y = b.y - 10;
             this.vx = 0; this.vy = 0;
@@ -525,7 +530,7 @@ class Ship {
 
     if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
       let speed = Math.hypot(this.vx, this.vy);
-      if (speed > 4.0 || hitWall) {
+      if (speed > 5.5 || hitWall) {
         this.explode(particles, null);
       } else {
         this.hp -= 12.5;
@@ -642,13 +647,24 @@ function startLoop() {
         }
       }
 
-      // Camera Tracking
+      // Camera Tracking: Each online player strictly follows their own assigned ship index!
       let trackedIdx = isOnline ? myPlayerIdx : 0;
       let targetShip = ships[trackedIdx];
-      if (targetShip && !targetShip.isDead) {
-        camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.1;
-        camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.1;
+
+      // If local player's ship is dead, find the first alive ship to spectate
+      if (targetShip && targetShip.isDead) {
+        for (let i = 0; i < activePlayerCount; i++) {
+          if (!ships[i].isDead) { targetShip = ships[i]; break; }
+        }
       }
+
+      if (targetShip) {
+        camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.12;
+        camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.12;
+      }
+      
+      const camInfo = document.getElementById('cam-info');
+      if (camInfo) camInfo.innerText = isOnline ? `Kamera: P${myPlayerIdx + 1}` : '';
     }
 
     // --- RENDER ---
