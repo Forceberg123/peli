@@ -90,6 +90,21 @@
       background: rgba(0, 0, 0, 0.4); border: 1px dashed rgba(0, 255, 204, 0.3);
       padding: 8px; border-radius: 6px; font-size: 12px; color: #00ffcc; margin-top: 10px;
     }
+
+    /* MOBIILIOHJAIMET / TOUCH CONTROLS */
+    #touch-controls {
+      display: none; position: fixed; bottom: 15px; left: 0; width: 100%;
+      z-index: 200; justify-content: space-between; padding: 0 15px; box-sizing: border-box;
+      pointer-events: none;
+    }
+    .touch-group { display: flex; gap: 10px; pointer-events: auto; }
+    .touch-btn {
+      width: 55px; height: 55px; border-radius: 50%; background: rgba(0, 255, 204, 0.2);
+      border: 2px solid #00ffcc; color: #00ffcc; font-size: 18px; font-weight: bold;
+      display: flex; justify-content: center; align-items: center; user-select: none;
+      touch-action: manipulation;
+    }
+    .touch-btn:active { background: #00ffcc; color: #000; }
   </style>
 </head>
 <body>
@@ -159,6 +174,18 @@
   <button class="btn" style="padding: 10px 20px; font-size: 16px;" onclick="restartMatch()">UUSI ERÄ</button>
 </div>
 
+<!-- KOSKETUSNAAPIT MOBIILILLE -->
+<div id="touch-controls">
+  <div class="touch-group">
+    <div class="touch-btn" id="t-left">◄</div>
+    <div class="touch-btn" id="t-right">►</div>
+  </div>
+  <div class="touch-group">
+    <div class="touch-btn" id="t-fire" style="border-color:#ff3366; color:#ff3366;">▲</div>
+    <div class="touch-btn" id="t-thrust" style="width:65px; height:65px;">🚀</div>
+  </div>
+</div>
+
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -172,6 +199,27 @@ resize();
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
+
+// Touch controls setup
+const touchState = { left: false, right: false, thrust: false, fire: false };
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+  document.getElementById('touch-controls').style.display = 'flex';
+}
+
+function bindTouch(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const start = (e) => { e.preventDefault(); touchState[key] = true; if (isOnline && !isHost) sendClientInput(); };
+  const end = (e) => { e.preventDefault(); touchState[key] = false; if (isOnline && !isHost) sendClientInput(); };
+  el.addEventListener('touchstart', start);
+  el.addEventListener('touchend', end);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', end);
+}
+bindTouch('t-left', 'left');
+bindTouch('t-right', 'right');
+bindTouch('t-thrust', 'thrust');
+bindTouch('t-fire', 'fire');
 
 window.addEventListener('keydown', e => { 
   keys[e.code] = true;
@@ -246,8 +294,8 @@ function hostOnlineGame() {
       return;
     }
 
+    const pIdx = clientConns.length + 1;
     clientConns.push(conn);
-    const pIdx = clientConns.length;
     conn.send({ type: 'init', playerIdx: pIdx });
 
     setNetStatus(`Huone Koodi: <b>${roomId}</b><br>Pelaajia liittynyt: ${clientConns.length + 1}/4`);
@@ -324,10 +372,10 @@ function joinOnlineGame() {
 function sendClientInput() {
   if (!hostConn || !hostConn.open) return;
   let ctrl = {
-    left: keys['KeyA'] || keys['ArrowLeft'],
-    right: keys['KeyD'] || keys['ArrowRight'],
-    thrust: keys['KeyW'] || keys['ArrowUp'],
-    fire: keys['Space'] || keys['Enter']
+    left: keys['KeyA'] || keys['ArrowLeft'] || touchState.left,
+    right: keys['KeyD'] || keys['ArrowRight'] || touchState.right,
+    thrust: keys['KeyW'] || keys['ArrowUp'] || touchState.thrust,
+    fire: keys['Space'] || keys['Enter'] || touchState.fire
   };
   hostConn.send({ type: 'input', ctrl: ctrl });
 }
@@ -588,12 +636,17 @@ function startLoop() {
         // Collect Inputs
         let ctrls = [];
         if (isOnline && isHost) {
-          ctrls[0] = { left: keys['KeyA'] || keys['ArrowLeft'], right: keys['KeyD'] || keys['ArrowRight'], thrust: keys['KeyW'] || keys['ArrowUp'], fire: keys['Space'] || keys['Enter'] };
+          ctrls[0] = { 
+            left: keys['KeyA'] || keys['ArrowLeft'] || touchState.left, 
+            right: keys['KeyD'] || keys['ArrowRight'] || touchState.right, 
+            thrust: keys['KeyW'] || keys['ArrowUp'] || touchState.thrust, 
+            fire: keys['Space'] || keys['Enter'] || touchState.fire 
+          };
           for (let i = 1; i < activePlayerCount; i++) {
             ctrls[i] = ships[i].remoteCtrl;
           }
         } else {
-          ctrls[0] = { left: keys['KeyA'], right: keys['KeyD'], thrust: keys['KeyW'], fire: keys['Space'] };
+          ctrls[0] = { left: keys['KeyA'] || touchState.left, right: keys['KeyD'] || touchState.right, thrust: keys['KeyW'] || touchState.thrust, fire: keys['Space'] || touchState.fire };
           ctrls[1] = { left: keys['ArrowLeft'], right: keys['ArrowRight'], thrust: keys['ArrowUp'], fire: keys['Enter'] };
           ctrls[2] = { left: keys['KeyJ'], right: keys['KeyL'], thrust: keys['KeyI'], fire: keys['KeyU'] };
           ctrls[3] = { left: keys['Numpad4'], right: keys['Numpad6'], thrust: keys['Numpad8'], fire: keys['Numpad0'] };
