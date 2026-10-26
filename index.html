@@ -688,39 +688,38 @@ function startLoop() {
         }
 
         // Broadcast to clients if host
-        if (isOnline && isHost && clientConns.length > 0) {
-          const syncData = {
-            type: 'sync',
-            matchTime: matchTime,
-            matchEnded: matchEnded,
-            ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
-            bullets: bullets.map(b => ({ x: b.x, y: b.y }))
-          };
-          clientConns.forEach(c => c.send(syncData));
-        }
-      }
-
-      // Camera Tracking: Each online player strictly follows their own assigned ship index!
-      let trackedIdx = isOnline ? myPlayerIdx : 0;
-      let targetShip = ships[trackedIdx];
-
-      // If local player's ship is dead, find the first alive ship to spectate
-      if (targetShip && targetShip.isDead) {
-        for (let i = 0; i < activePlayerCount; i++) {
-          if (!ships[i].isDead) { targetShip = ships[i]; break; }
-        }
-      }
-
-      if (targetShip) {
-        camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.12;
-        camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.12;
-      }
-      
-      const camInfo = document.getElementById('cam-info');
-      if (camInfo) camInfo.innerText = isOnline ? `Kamera: P${myPlayerIdx + 1}` : '';
+    if (isOnline && isHost && clientConns.length > 0) {
+      const syncData = {
+        type: 'sync',
+        matchTime: matchTime,
+        matchEnded: matchEnded,
+        ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
+        bullets: bullets.map(b => ({ x: b.x, y: b.y }))
+      };
+      clientConns.forEach(c => c.send(syncData));
     }
 
-    // --- RENDER ---
+    // Camera Tracking: Strictly follow local player's ship in Online mode!
+    let trackedIdx = isOnline ? myPlayerIdx : 0;
+    let targetShip = ships[trackedIdx];
+
+    // In local multiplayer mode only: spectate another ship if current target is dead
+    if (!isOnline && targetShip && targetShip.isDead) {
+      for (let i = 0; i < activePlayerCount; i++) {
+        if (!ships[i].isDead) { targetShip = ships[i]; break; }
+      }
+    }
+
+    if (targetShip) {
+      camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.12;
+      camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.12;
+    }
+    
+    const camInfo = document.getElementById('cam-info');
+    if (camInfo) camInfo.innerText = isOnline ? `Oma alus: P${myPlayerIdx + 1}` : '';
+  }
+
+  // --- RENDER ---
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Terrain
