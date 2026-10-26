@@ -264,6 +264,57 @@ function getCeilingY(x) {
   return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
 }
 
+// --- EFEKTIT / PARTIKKELISYSTEEMI ---
+const particles = [];
+
+class Particle {
+  constructor(x, y, vx, vy, color, size, life, type = 'smoke') {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.color = color;
+    this.size = size;
+    this.maxLife = life;
+    this.life = life;
+    this.type = type;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life--;
+    if (this.type === 'smoke') {
+      this.size += 0.15;
+      this.vx *= 0.96;
+      this.vy *= 0.96;
+    } else if (this.type === 'fire') {
+      this.size = Math.max(0, this.size - 0.2);
+    }
+  }
+
+  draw() {
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x - camera.x, this.y - camera.y, Math.max(1, this.size), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnExplosion(x, y, count = 25) {
+  const colors = ['#ff3300', '#ff9900', '#ffff00', '#ffffff', '#555555'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 8;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const size = 3 + Math.random() * 6;
+    const life = 20 + Math.random() * 30;
+    particles.push(new Particle(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed, color, size, life, 'fire'));
+  }
+}
+
 // --- GAME STATE ---
 let activePlayerCount = 2;
 let matchTime = 60;
@@ -381,6 +432,7 @@ function joinOnlineGame() {
         myPlayerIdx = data.playerIdx;
       } else if (data.type === 'start') {
         activePlayerCount = data.playerCount;
+        initGame();
         document.getElementById('menu-overlay').style.display = 'none';
         gameStarted = true;
         updateHUDVisibility();
@@ -388,15 +440,20 @@ function joinOnlineGame() {
         matchTime = data.matchTime;
         matchEnded = data.matchEnded;
         data.ships.forEach((s, idx) => {
-          if (ships[idx]) {
-            ships[idx].x = s.x; ships[idx].y = s.y;
-            ships[idx].angle = s.angle; ships[idx].hp = s.hp;
-            ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-            ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
+          if (!ships[idx]) {
+            const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
+            ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
           }
+          ships[idx].x = s.x; ships[idx].y = s.y;
+          ships[idx].angle = s.angle; ships[idx].hp = s.hp;
+          ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+          ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
         });
         bullets.length = 0;
         data.bullets.forEach(b => bullets.push(b));
+        if (data.fx) {
+          data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
+        }
       }
     });
   });
@@ -443,6 +500,8 @@ function showMenu() {
 }
 
 // --- PELI-OBJEKTIT & FYSIIKKA ---
+const pendingFx = [];
+
 class Ship {
   constructor(id, x, y, color) {
     this.id = id;
@@ -491,6 +550,19 @@ class Ship {
       this.vx += Math.cos(this.angle) * 0.38;
       this.vy += Math.sin(this.angle) * 0.38;
       this.fuel = Math.max(0, this.fuel - 0.0375);
+
+      // KAASUN POLTTOAINEN- & SAVUVANA
+      const backX = this.x - Math.cos(this.angle) * 12;
+      const backY = this.y - Math.sin(this.angle) * 12;
+      const pVx = -Math.cos(this.angle) * 3 + (Math.random() - 0.5) * 1.5;
+      const pVy = -Math.sin(this.angle) * 3 + (Math.random() - 0.5) * 1.5;
+      const pColor = Math.random() > 0.4 ? '#ff6600' : '#ffcc00';
+      particles.push(new Particle(backX, backY, pVx, pVy, pColor, 4, 15, 'fire'));
+    }
+
+    // LOW HP SAVUEFEKTI
+    if (this.hp < 50 && Math.random() > 0.4) {
+      particles.push(new Particle(this.x, this.y, (Math.random() - 0.5), -1, '#666666', 5, 25, 'smoke'));
     }
 
     if (!this.dockedBase) {
@@ -538,15 +610,21 @@ class Ship {
       } else {
         this.hp -= 12.5;
         this.vx *= -0.5; this.vy *= -0.5;
+        spawnExplosion(this.x, this.y, 8);
+        pendingFx.push({ x: this.x, y: this.y, count: 8 });
         if (this.hp <= 0) this.die();
       }
     }
   }
 
   die() {
+    if (this.isDead) return;
     this.isDead = true;
     this.dockedBase = null;
     this.hp = 0;
+    spawnExplosion(this.x, this.y, 35);
+    pendingFx.push({ x: this.x, y: this.y, count: 35 });
+
     setTimeout(() => {
       this.x = 480 + this.id * 100;
       this.y = WORLD.height - 290;
@@ -598,6 +676,8 @@ class Bullet {
     const hitObs = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius);
     if (this.x <= 0 || this.x >= WORLD.width || this.y <= getCeilingY(this.x) || this.y >= getFloorY(this.x) || hitObs) {
       this.life = 0;
+      spawnExplosion(this.x, this.y, 6);
+      pendingFx.push({ x: this.x, y: this.y, count: 6 });
       return;
     }
 
@@ -607,6 +687,8 @@ class Bullet {
         if (dist < 15) {
           s.hp -= 25;
           this.life = 0;
+          spawnExplosion(this.x, this.y, 10);
+          pendingFx.push({ x: this.x, y: this.y, count: 10 });
           if (s.hp <= 0) {
             s.die();
             if (ships[this.ownerId]) ships[this.ownerId].kills++;
@@ -630,6 +712,8 @@ const bullets = [];
 function initGame() {
   ships.length = 0;
   bullets.length = 0;
+  particles.length = 0;
+  pendingFx.length = 0;
   matchTime = 60;
   matchEnded = false;
 
@@ -683,6 +767,7 @@ function endMatch() {
 function loop() {
   if (gameStarted) {
     if (isHost) {
+      pendingFx.length = 0;
       ships.forEach(s => s.update());
       for (let i = bullets.length - 1; i >= 0; i--) {
         bullets[i].update();
@@ -694,12 +779,19 @@ function loop() {
           matchTime: matchTime,
           matchEnded: matchEnded,
           ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
-          bullets: bullets.map(b => ({ x: b.x, y: b.y }))
+          bullets: bullets.map(b => ({ x: b.x, y: b.y })),
+          fx: pendingFx
         };
         clientConns.forEach(c => { if (c.open) c.send({ type: 'sync', ...syncData }); });
       }
     } else {
       sendClientInput();
+    }
+
+    // PÄIVITÄ PARTIKKELIT LOKALISESTI
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].update();
+      if (particles[i].life <= 0) particles.splice(i, 1);
     }
 
     // KAMERA SEURAA AINA OMAA ALUSTA
@@ -755,7 +847,8 @@ function loop() {
     ctx.lineWidth = 4;
     ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
 
-    // Objektit
+    // Objektit & Partikkelit
+    particles.forEach(p => p.draw());
     ships.forEach(s => s.draw());
     bullets.forEach(b => b.draw());
 
