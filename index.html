@@ -80,75 +80,50 @@
 <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- ÄÄNIELEKTIT (Web Audio API) ---
+// --- TURVALLINEN ÄÄNIJÄRJESTELMÄ ---
 let audioCtx = null;
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+function tryPlaySound(type) {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    if (type === 'thrust') {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(60, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+    } else if (type === 'shoot') {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(700, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+    } else if (type === 'explode') {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(20, audioCtx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    }
+  } catch (e) {
+    // Jos selain estää äänen, peli jatkuu silti normaalisti ilman virhettä
   }
 }
-
-const SoundFX = {
-  playThrust() {
-    if (!audioCtx) return;
-    let osc = audioCtx.createOscillator();
-    let gain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(60, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-  },
-  playShoot() {
-    if (!audioCtx) return;
-    let osc = audioCtx.createOscillator();
-    let gain = audioCtx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.08);
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.08);
-  },
-  playHit() {
-    if (!audioCtx) return;
-    let osc = audioCtx.createOscillator();
-    let gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-    osc.frequency.linearRampToValueAtTime(40, audioCtx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.15);
-  },
-  playExplosion() {
-    if (!audioCtx) return;
-    let bufferSize = audioCtx.sampleRate * 0.4;
-    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    let data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-    let noise = audioCtx.createBufferSource();
-    noise.buffer = buffer;
-    let filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(300, audioCtx.currentTime);
-    filter.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.4);
-    let gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-    noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
-    noise.start();
-  }
-};
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -161,13 +136,23 @@ const camera = { x: 0, y: 0 };
 const keys = {};
 
 window.addEventListener('keydown', e => { 
-  initAudio();
   keys[e.code] = true; 
   if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
     restartMatch();
   }
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+const peerConfig = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.services.mozilla.com' }
+    ]
+  }
+};
 
 let peer = null;
 let isHost = false;
@@ -225,44 +210,20 @@ function restartMatch() {
 }
 
 document.getElementById('btn-host').onclick = () => {
-  initAudio();
-  statusEl.innerText = "Yhdistetään PeerJS-palvelimeen...";
+  statusEl.innerText = "Luodaan huonetta...";
   try {
     if (peer) peer.destroy();
-    
-    peer = new Peer({
-      host: '0.peerjs.com',
-      port: 443,
-      secure: true,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun.services.mozilla.com' }
-        ]
-      }
-    });
-
-    let hostOpenTimer = setTimeout(() => {
-      if (!isHost) {
-        statusEl.innerText = "Huoneen luonti aikakatkaistiin. PeerJS-palvelin saattaa olla ruuhkainen, kokeile uudelleen!";
-      }
-    }, 8000);
+    peer = new Peer(peerConfig);
 
     peer.on('open', id => {
-      clearTimeout(hostOpenTimer);
       isHost = true;
       myPlayerIndex = 0;
       
-      statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverille:<br><b style="font-size:20px; color:#00ffcc;">${id}</b><br><br><button class="btn" id="btn-start-game" style="padding:8px 16px; font-size:14px;">Aloita peli</button>`;
+      document.getElementById('lobby-overlay').style.display = 'none';
+      document.getElementById('status-text').innerText = `ISÄNTÄ (P1) | Koodi: ${id}`;
       
-      document.getElementById('btn-start-game').onclick = () => {
-        document.getElementById('lobby-overlay').style.display = 'none';
-        document.getElementById('status-text').innerText = `ISÄNTÄ (P1)`;
-        startTimer();
-        startLoop();
-      };
+      startTimer();
+      startLoop();
     });
     
     peer.on('connection', c => {
@@ -289,36 +250,20 @@ document.getElementById('btn-host').onclick = () => {
       });
     });
 
-    peer.on('error', err => { 
-      clearTimeout(hostOpenTimer);
-      statusEl.innerText = "Verkkovirhe: " + (err.type || err); 
-    });
+    peer.on('error', err => { statusEl.innerText = "Verkkovirhe: " + err.type; });
   } catch (e) {
     statusEl.innerText = "Virhe: " + e.message;
   }
 };
 
 document.getElementById('btn-join').onclick = () => {
-  initAudio();
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
   statusEl.innerText = "Yhdistetään isäntään...";
   
   try {
     if (peer) peer.destroy();
-    peer = new Peer({
-      host: '0.peerjs.com',
-      port: 443,
-      secure: true,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun.services.mozilla.com' }
-        ]
-      }
-    });
+    peer = new Peer(peerConfig);
     
     peer.on('open', () => {
       hostConnection = peer.connect(code, { reliable: true });
@@ -418,7 +363,7 @@ class Ship {
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
 
-      if (isLocalPlayer) SoundFX.playThrust();
+      if (isLocalPlayer) tryPlaySound('thrust');
 
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
@@ -432,7 +377,7 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
-      if (isLocalPlayer) SoundFX.playShoot();
+      if (isLocalPlayer) tryPlaySound('shoot');
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
       this.cooldown = 12;
@@ -450,7 +395,6 @@ class Ship {
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
     }
 
-    // Laskeutuminen tukikohtaan
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
@@ -475,7 +419,6 @@ class Ship {
         this.explode(particles, null, isLocalPlayer);
       } else {
         this.hp -= 25;
-        if (isLocalPlayer) SoundFX.playHit();
         this.vx *= -0.4; this.vy *= -0.4;
         if (this.hp <= 0) this.explode(particles, null, isLocalPlayer);
       }
@@ -485,7 +428,7 @@ class Ship {
   explode(particles, killerId, isLocalPlayer) {
     this.isDead = true; this.dockedBase = null;
     if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
-    if (isLocalPlayer) SoundFX.playExplosion();
+    if (isLocalPlayer) tryPlaySound('explode');
     for (let i = 0; i < 25; i++) {
       particles.push({
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
@@ -584,7 +527,6 @@ function startLoop() {
               if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
                 s.hp -= 25;
                 if (s.hp <= 0) s.explode(particles, b.owner, myPlayerIndex === s.id);
-                else if (myPlayerIndex === s.id) SoundFX.playHit();
                 bullets.splice(i, 1);
                 break;
               }
@@ -658,3 +600,26 @@ function startLoop() {
     ctx.fillStyle = '#ffcc00';
     bullets.forEach(b => {
       ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    ships.forEach(s => s.draw());
+
+    // MINIKARTTA
+    const mapW = 180, mapH = 110;
+    const mapX = canvas.width - mapW - 20, mapY = 50;
+
+    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
