@@ -80,51 +80,6 @@
 <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- TURVALLINEN ÄÄNIJÄRJESTELMÄ ---
-let audioCtx = null;
-function tryPlaySound(type) {
-  try {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    if (type === 'thrust') {
-      let osc = audioCtx.createOscillator();
-      let gain = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(60, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-      osc.connect(gain); gain.connect(audioCtx.destination);
-      osc.start(); osc.stop(audioCtx.currentTime + 0.08);
-    } else if (type === 'shoot') {
-      let osc = audioCtx.createOscillator();
-      let gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(700, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-      osc.connect(gain); gain.connect(audioCtx.destination);
-      osc.start(); osc.stop(audioCtx.currentTime + 0.08);
-    } else if (type === 'explode') {
-      let osc = audioCtx.createOscillator();
-      let gain = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-      osc.frequency.linearRampToValueAtTime(20, audioCtx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      osc.connect(gain); gain.connect(audioCtx.destination);
-      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-    }
-  } catch (e) {
-    // Jos selain estää äänen, peli jatkuu silti normaalisti ilman virhettä
-  }
-}
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -142,17 +97,6 @@ window.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-
-const peerConfig = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun.services.mozilla.com' }
-    ]
-  }
-};
 
 let peer = null;
 let isHost = false;
@@ -210,20 +154,43 @@ function restartMatch() {
 }
 
 document.getElementById('btn-host').onclick = () => {
-  statusEl.innerText = "Luodaan huonetta...";
+  statusEl.innerText = "Yhdistetään PeerJS-palvelimeen...";
   try {
     if (peer) peer.destroy();
-    peer = new Peer(peerConfig);
+    
+    peer = new Peer({
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.services.mozilla.com' }
+        ]
+      }
+    });
+
+    let hostOpenTimer = setTimeout(() => {
+      if (!isHost) {
+        statusEl.innerText = "Huoneen luonti aikakatkaistiin. PeerJS-palvelin saattaa olla ruuhkainen, kokeile uudelleen!";
+      }
+    }, 8000);
 
     peer.on('open', id => {
+      clearTimeout(hostOpenTimer);
       isHost = true;
       myPlayerIndex = 0;
       
-      document.getElementById('lobby-overlay').style.display = 'none';
-      document.getElementById('status-text').innerText = `ISÄNTÄ (P1) | Koodi: ${id}`;
+      statusEl.innerHTML = `HUONE LUOTU!<br>Kopioi tämä koodi kaverille:<br><b style="font-size:20px; color:#00ffcc;">${id}</b><br><br><button class="btn" id="btn-start-game" style="padding:8px 16px; font-size:14px;">Aloita peli</button>`;
       
-      startTimer();
-      startLoop();
+      document.getElementById('btn-start-game').onclick = () => {
+        document.getElementById('lobby-overlay').style.display = 'none';
+        document.getElementById('status-text').innerText = `ISÄNTÄ (P1)`;
+        startTimer();
+        startLoop();
+      };
     });
     
     peer.on('connection', c => {
@@ -250,7 +217,10 @@ document.getElementById('btn-host').onclick = () => {
       });
     });
 
-    peer.on('error', err => { statusEl.innerText = "Verkkovirhe: " + err.type; });
+    peer.on('error', err => { 
+      clearTimeout(hostOpenTimer);
+      statusEl.innerText = "Verkkovirhe: " + (err.type || err); 
+    });
   } catch (e) {
     statusEl.innerText = "Virhe: " + e.message;
   }
@@ -263,7 +233,19 @@ document.getElementById('btn-join').onclick = () => {
   
   try {
     if (peer) peer.destroy();
-    peer = new Peer(peerConfig);
+    peer = new Peer({
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.services.mozilla.com' }
+        ]
+      }
+    });
     
     peer.on('open', () => {
       hostConnection = peer.connect(code, { reliable: true });
@@ -300,7 +282,6 @@ document.getElementById('btn-join').onclick = () => {
   }
 };
 
-// Luolasto, tukikohdat ja esteet
 const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
 const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
@@ -351,7 +332,7 @@ class Ship {
     this.hp = 150; this.fuel = 100; 
     this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
-  update(ctrl, bullets, particles, isLocalPlayer) {
+  update(ctrl, bullets, particles) {
     if (this.isDead || matchEnded) return;
 
     if (ctrl.left) this.angle -= 0.07;
@@ -362,8 +343,6 @@ class Ship {
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
       this.fuel = Math.max(0, this.fuel - 0.15);
-
-      if (isLocalPlayer) tryPlaySound('thrust');
 
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
@@ -377,7 +356,6 @@ class Ship {
         vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
-      if (isLocalPlayer) tryPlaySound('shoot');
       this.vx -= Math.cos(this.angle) * 0.35;
       this.vy -= Math.sin(this.angle) * 0.35;
       this.cooldown = 12;
@@ -416,19 +394,18 @@ class Ship {
     if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
       let speed = Math.hypot(this.vx, this.vy);
       if (speed > 4.0 || hitWall) {
-        this.explode(particles, null, isLocalPlayer);
+        this.explode(particles, null);
       } else {
         this.hp -= 25;
         this.vx *= -0.4; this.vy *= -0.4;
-        if (this.hp <= 0) this.explode(particles, null, isLocalPlayer);
+        if (this.hp <= 0) this.explode(particles, null);
       }
     }
   }
 
-  explode(particles, killerId, isLocalPlayer) {
+  explode(particles, killerId) {
     this.isDead = true; this.dockedBase = null;
     if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
-    if (isLocalPlayer) tryPlaySound('explode');
     for (let i = 0; i < 25; i++) {
       particles.push({
         x: this.x, y: this.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 30, color: '#ff3300'
@@ -506,11 +483,11 @@ function startLoop() {
     };
 
     if (isHost) {
-      ships[0].update(myCtrl, bullets, particles, myPlayerIndex === 0);
+      ships[0].update(myCtrl, bullets, particles);
 
       for (let i = 1; i <= 3; i++) {
         let ctrl = clientInputs[i] || {};
-        ships[i].update(ctrl, bullets, particles, myPlayerIndex === i);
+        ships[i].update(ctrl, bullets, particles);
       }
 
       if (!matchEnded) {
@@ -526,7 +503,7 @@ function startLoop() {
             if (!s.isDead && s.id !== b.owner) {
               if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
                 s.hp -= 25;
-                if (s.hp <= 0) s.explode(particles, b.owner, myPlayerIndex === s.id);
+                if (s.hp <= 0) s.explode(particles, b.owner);
                 bullets.splice(i, 1);
                 break;
               }
@@ -604,7 +581,6 @@ function startLoop() {
 
     ships.forEach(s => s.draw());
 
-    // MINIKARTTA
     const mapW = 180, mapH = 110;
     const mapX = canvas.width - mapW - 20, mapY = 50;
 
@@ -623,3 +599,32 @@ function startLoop() {
     ctx.stroke();
 
     ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (floor[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    ships.forEach(s => {
+      if (!s.isDead) {
+        let sx = mapX + (s.x / WORLD.width) * mapW;
+        let sy = mapY + (s.y / WORLD.height) * mapH;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    });
+
+    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} | FUEL:${Math.ceil(ships[0].fuel)} | K:${ships[0].kills}`;
+    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} | FUEL:${Math.ceil(ships[1].fuel)} | K:${ships[1].kills}`;
+    document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} | FUEL:${Math.ceil(ships[2].fuel)} | K:${ships[2].kills}`;
+    document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} | FUEL:${Math.ceil(ships[3].fuel)} | K:${ships[3].kills}`;
+    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+</script>
+</body>
+</html>
