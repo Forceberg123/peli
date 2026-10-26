@@ -2,149 +2,411 @@
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <title>Wings Cave Flyer - Match Mode</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wings Cave Flyer - Online & Local</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      font-family: monospace;
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #050810; overflow: hidden; font-family: 'Courier New', monospace; color: #00ffcc;
+      user-select: none;
     }
+    
+    /* ALKUVALIKKO */
+    #menu-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.96); z-index: 500;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      text-align: center;
+    }
+    #menu-card {
+      background: rgba(10, 15, 30, 0.95); border: 2px solid #00ffcc;
+      border-radius: 12px; padding: 25px 35px; max-width: 550px; width: 90%;
+      box-shadow: 0 0 25px rgba(0, 255, 204, 0.25);
+    }
+    #menu-card h1 { font-size: 32px; margin-top: 0; margin-bottom: 15px; color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
+    
+    .menu-group { margin: 18px 0; text-align: left; }
+    .menu-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #88aacc; font-size: 13px; }
+    
+    .tab-buttons { display: flex; gap: 8px; margin-bottom: 15px; }
+    .tab-btn {
+      flex: 1; padding: 10px; background: rgba(0,255,204,0.05); border: 1px solid #00ffcc;
+      color: #00ffcc; font-family: inherit; font-size: 13px; font-weight: bold; cursor: pointer; border-radius: 6px;
+    }
+    .tab-btn.active { background: #00ffcc; color: #000; box-shadow: 0 0 10px #00ffcc; }
+
+    .select-btn {
+      background: rgba(0,255,204,0.1); border: 1px solid #00ffcc; color: #00ffcc;
+      padding: 8px 14px; margin: 3px; font-family: inherit; font-size: 13px;
+      cursor: pointer; border-radius: 6px; transition: 0.2s;
+    }
+    .select-btn.active, .select-btn:hover {
+      background: #00ffcc; color: #000; font-weight: bold; box-shadow: 0 0 10px #00ffcc;
+    }
+    
+    input[type="text"] {
+      background: #0a0d18; border: 1px solid #00ffcc; color: #00ffcc;
+      padding: 10px; font-family: inherit; font-size: 14px; border-radius: 6px;
+      width: 100%; box-sizing: border-box; text-align: center; margin-bottom: 8px;
+    }
+
+    .start-btn {
+      background: #00ffcc; color: #000; font-family: inherit; font-size: 16px; font-weight: bold;
+      padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; margin-top: 15px;
+      box-shadow: 0 0 15px #00ffcc; transition: 0.2s; width: 100%;
+    }
+    .start-btn:hover { background: #fff; box-shadow: 0 0 25px #fff; transform: scale(1.02); }
+
+    /* HUD JA OVERLAYT */
     #hud {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 14px;
-      font-weight: bold;
-      z-index: 100;
-      background: rgba(5, 8, 15, 0.85);
-      padding: 10px 20px;
-      box-sizing: border-box;
-      border-bottom: 1px solid #00ffcc;
+      position: fixed; top: 0; left: 0; width: 100%;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; font-weight: bold; z-index: 100;
+      background: rgba(5, 8, 15, 0.85); padding: 8px 16px;
+      box-sizing: border-box; border-bottom: 2px solid #00ffcc;
+      backdrop-filter: blur(4px);
     }
-    #timer {
-      font-size: 18px;
-      color: #ffcc00;
-    }
+    #timer { font-size: 18px; color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
+    
     #game-over {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(5, 8, 15, 0.9);
-      z-index: 200;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      color: #00ffcc;
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.95); z-index: 300;
+      flex-direction: column; justify-content: center; align-items: center;
+      color: #00ffcc; text-align: center;
     }
-    #game-over h1 {
-      font-size: 48px;
-      margin-bottom: 10px;
-      text-shadow: 0 0 10px #00ffcc;
+    #game-over h1 { font-size: 44px; margin-bottom: 10px; text-shadow: 0 0 15px #00ffcc; }
+    #game-over p { font-size: 18px; color: #fff; margin-bottom: 20px; }
+
+    .btn {
+      background: rgba(0,255,204,0.12); border: 1px solid #00ffcc; color: #00ffcc;
+      padding: 6px 12px; font-family: inherit; font-size: 12px; font-weight: bold;
+      cursor: pointer; margin: 0 4px; transition: 0.2s; border-radius: 4px;
     }
-    #game-over p {
-      font-size: 20px;
-      color: #fff;
-      margin-bottom: 25px;
-    }
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background: #0a0d18;
+    .btn:hover { background: #00ffcc; color: #000; box-shadow: 0 0 10px #00ffcc; }
+    canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
+
+    .status-box {
+      background: rgba(0, 0, 0, 0.4); border: 1px dashed rgba(0, 255, 204, 0.3);
+      padding: 8px; border-radius: 6px; font-size: 12px; color: #00ffcc; margin-top: 10px;
     }
   </style>
 </head>
 <body>
 
+<!-- ALKUVALIKKO -->
+<div id="menu-overlay">
+  <div id="menu-card">
+    <h1>WINGS CAVE FLYER</h1>
+    
+    <div class="tab-buttons">
+      <button class="tab-btn active" id="tab-online" onclick="switchTab('online')">Nettipeli (Online P2P)</button>
+      <button class="tab-btn" id="tab-local" onclick="switchTab('local')">Samalla koneella (Local)</button>
+    </div>
+
+    <!-- NETTIPELI-ASETUKSET -->
+    <div id="panel-online">
+      <div class="menu-group">
+        <label>Luo peli tai liity huoneeseen:</label>
+        <button class="start-btn" onclick="hostOnlineGame()" style="margin-top: 0; margin-bottom: 12px;">LUO UUSI NETTIPELI (Host)</button>
+        <input type="text" id="join-room-id" placeholder="Syötä Huone-Koodi liittyäksesi" maxlength="6">
+        <button class="btn" style="width: 100%; padding: 10px; margin: 0;" onclick="joinOnlineGame()">LIITY HUONEESEEN</button>
+      </div>
+
+      <div class="status-box" id="net-status">
+        Tila: Odotetaan valintaa...
+      </div>
+    </div>
+
+    <!-- PAIKALLISEN PELIN ASETUKSET -->
+    <div id="panel-local" style="display: none;">
+      <div class="menu-group">
+        <label>Valitse pelaajamäärä:</label>
+        <button class="select-btn active" id="btn-mode-2p" onclick="setLocalPlayers(2)">2 Pelaajaa</button>
+        <button class="select-btn" id="btn-mode-4p" onclick="setLocalPlayers(4)">4 Pelaajaa</button>
+      </div>
+
+      <div class="menu-group" style="font-size: 11px; line-height: 1.4; color: #88aacc;">
+        <b>Ohjaimet:</b><br>
+        • P1: W (Kaasu), A/D (Kääntö), Space (Ampuminen)<br>
+        • P2: Nuoli Ylös, Vasen/Oikea, Enter (Ampuminen)<br>
+        • P3: I (Kaasu), J/L (Kääntö), U (Ampuminen)<br>
+        • P4: Numpad 8, 4/6, 0 (Ampuminen)
+      </div>
+
+      <button class="start-btn" onclick="startLocalGame()">ALOITA PAIKALLINEN PELI</button>
+    </div>
+  </div>
+</div>
+
+<!-- HUD JA GAME OVER -->
 <div id="hud">
-  <div id="p1-hud" style="color:#00ffcc">P1 (WASD) HP: 150 | FUEL: 100 | KILLS: 0</div>
-  <div id="timer">Aikaa jäljellä: 60s</div>
-  <div id="p2-hud" style="color:#ff3366">P2 (Nuolet) HP: 150 | FUEL: 100 | KILLS: 0</div>
+  <div id="p1-hud" style="color:#00ffcc">P1 HP:150 | FUEL:100 | K:0</div>
+  <div id="p2-hud" style="color:#ff3366">P2 HP:150 | FUEL:100 | K:0</div>
+  <div id="p3-hud" style="color:#00ff66; display:none;">P3 HP:150 | FUEL:100 | K:0</div>
+  <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HP:150 | FUEL:100 | K:0</div>
+  <div id="timer">Aikaa: 60s</div>
+  <div>
+    <button class="btn" onclick="showMenu()">Valikko</button>
+    <button class="btn" id="btn-restart" onclick="restartMatch()">Uusi erä</button>
+  </div>
 </div>
 
 <div id="game-over">
-  <h1 id="winner-title">VOITTAJA!</h1>
-  <p id="final-score">P1: 0 - P2: 0</p>
-  <p style="font-size: 14px; color: #88aacc;">Paina Space tai Enter aloittaaksesi uuden erän</p>
+  <h1 id="winner-title">ERÄ PÄÄTTYI!</h1>
+  <p id="final-score">Tapot: 0</p>
+  <button class="btn" style="padding: 10px 20px; font-size: 16px;" onclick="restartMatch()">UUSI ERÄ</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <script>
+// --- CANVAS & BASIC SETUP ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resize);
 resize();
 
 const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
-
 const keys = {};
-window.addEventListener('keydown', e => { 
-  keys[e.code] = true; 
-  if (matchEnded && (e.code === 'Space' || e.code === 'Enter')) {
-    restartMatch();
-  }
-});
-window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Äänet
-let audioCtx = null;
-function playSound(type) {
-  try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    const now = audioCtx.currentTime;
-    if (type === 'laser') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(350, now);
-      osc.frequency.exponentialRampToValueAtTime(40, now + 0.12);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
-      osc.start(now); osc.stop(now + 0.12);
-    } else if (type === 'thrust') {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(60, now);
-      gain.gain.setValueAtTime(0.04, now);
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
-      osc.start(now); osc.stop(now + 0.05);
-    } else if (type === 'boom') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(90, now);
-      osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
-      osc.start(now); osc.stop(now + 0.3);
-    }
-  } catch(e){}
+window.addEventListener('keydown', e => { 
+  keys[e.code] = true;
+  if (isOnline && !isHost) sendClientInput();
+});
+window.addEventListener('keyup', e => { 
+  keys[e.code] = false;
+  if (isOnline && !isHost) sendClientInput();
+});
+
+// --- GAME STATE VARIABLES ---
+let activePlayerCount = 2;
+let matchTime = 60;
+let matchEnded = false;
+let gameStarted = false;
+let timerInterval = null;
+
+let isOnline = false;
+let isHost = false;
+let myPlayerIdx = 0;
+let peer = null;
+let hostConn = null;
+let clientConns = [];
+
+// Menu Tab Switcher
+function switchTab(tab) {
+  document.getElementById('tab-online').classList.toggle('active', tab === 'online');
+  document.getElementById('tab-local').classList.toggle('active', tab === 'local');
+  document.getElementById('panel-online').style.display = tab === 'online' ? 'block' : 'none';
+  document.getElementById('panel-local').style.display = tab === 'local' ? 'block' : 'none';
 }
 
-// Luolasto
-const segW = 40;
-const numSegs = Math.ceil(WORLD.width / segW) + 1;
-const ceiling = [];
-const floor = [];
+function setLocalPlayers(count) {
+  activePlayerCount = count;
+  document.getElementById('btn-mode-2p').classList.toggle('active', count === 2);
+  document.getElementById('btn-mode-4p').classList.toggle('active', count === 4);
+}
 
+// --- ONLINE MULTIPLAYER LOGIC (PeerJS) ---
+function setNetStatus(msg) {
+  document.getElementById('net-status').innerHTML = msg;
+}
+
+function generateRoomId() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function hostOnlineGame() {
+  isOnline = true;
+  isHost = true;
+  myPlayerIdx = 0;
+  const roomId = generateRoomId();
+
+  setNetStatus("Yhdistetään palvelimelle...");
+  
+  try {
+    peer = new Peer(roomId);
+  } catch(e) {
+    setNetStatus("Virhe verkkoalustuksessa. Sandbox saattaa estää yhteydet.");
+    return;
+  }
+
+  peer.on('open', (id) => {
+    setNetStatus(`Huone luotu! <b>Koodi: <span style="color:#fff; font-size:16px;">${id}</span></b><br>Odotetaan muita pelaajia (1/4)...`);
+    document.getElementById('menu-card').innerHTML += `<button class="start-btn" onclick="startOnlineMatch()">KÄYNNISTÄ PELI NÄILLÄ PELAAJILLA</button>`;
+  });
+
+  peer.on('connection', (conn) => {
+    if (clientConns.length >= 3) {
+      conn.send({ type: 'full' });
+      conn.close();
+      return;
+    }
+
+    clientConns.push(conn);
+    const pIdx = clientConns.length;
+    conn.send({ type: 'init', playerIdx: pIdx });
+
+    setNetStatus(`Huone Koodi: <b>${roomId}</b><br>Pelaajia liittynyt: ${clientConns.length + 1}/4`);
+
+    conn.on('data', (data) => {
+      if (data.type === 'input') {
+        ships[pIdx].remoteCtrl = data.ctrl;
+      }
+    });
+
+    conn.on('close', () => {
+      setNetStatus(`Pelaaja lähti. Pelaajia: ${clientConns.length + 1}/4`);
+    });
+  });
+
+  peer.on('error', (err) => {
+    setNetStatus("Verkkovirhe: " + err.type);
+  });
+}
+
+function joinOnlineGame() {
+  const roomId = document.getElementById('join-room-id').value.trim();
+  if (!roomId) { alert("Syötä huonekoodi!"); return; }
+
+  isOnline = true;
+  isHost = false;
+
+  setNetStatus("Yhdistetään huoneeseen " + roomId + "...");
+  peer = new Peer();
+
+  peer.on('open', () => {
+    hostConn = peer.connect(roomId);
+
+    hostConn.on('open', () => {
+      setNetStatus("Yhdistetty! Odotetaan isännän käynnistävän pelin...");
+    });
+
+    hostConn.on('data', (data) => {
+      if (data.type === 'init') {
+        myPlayerIdx = data.playerIdx;
+      } else if (data.type === 'start') {
+        activePlayerCount = data.playerCount;
+        document.getElementById('menu-overlay').style.display = 'none';
+        gameStarted = true;
+        updateHUDVisibility();
+      } else if (data.type === 'sync') {
+        // Sync state from Host
+        matchTime = data.matchTime;
+        matchEnded = data.matchEnded;
+        data.ships.forEach((s, idx) => {
+          if (ships[idx]) {
+            ships[idx].x = s.x; ships[idx].y = s.y;
+            ships[idx].angle = s.angle; ships[idx].hp = s.hp;
+            ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+            ships[idx].isDead = s.isDead;
+          }
+        });
+        bullets.length = 0;
+        data.bullets.forEach(b => bullets.push(b));
+      }
+    });
+
+    hostConn.on('close', () => {
+      alert("Yhteys isäntään katkesi.");
+      showMenu();
+    });
+  });
+
+  peer.on('error', (err) => {
+    setNetStatus("Liittymisvirhe: Tarkista huonekoodi.");
+  });
+}
+
+function sendClientInput() {
+  if (!hostConn || !hostConn.open) return;
+  let ctrl = {
+    left: keys['KeyA'] || keys['ArrowLeft'],
+    right: keys['KeyD'] || keys['ArrowRight'],
+    thrust: keys['KeyW'] || keys['ArrowUp'],
+    fire: keys['Space'] || keys['Enter']
+  };
+  hostConn.send({ type: 'input', ctrl: ctrl });
+}
+
+function startOnlineMatch() {
+  activePlayerCount = clientConns.length + 1;
+  clientConns.forEach(c => {
+    c.send({ type: 'start', playerCount: activePlayerCount });
+  });
+  startLocalGame();
+}
+
+// --- LOCAL GAME CONTROLS ---
+function startLocalGame() {
+  document.getElementById('menu-overlay').style.display = 'none';
+  gameStarted = true;
+  updateHUDVisibility();
+  restartMatch();
+}
+
+function updateHUDVisibility() {
+  document.getElementById('p3-hud').style.display = activePlayerCount >= 3 ? 'block' : 'none';
+  document.getElementById('p4-hud').style.display = activePlayerCount >= 4 ? 'block' : 'none';
+}
+
+function showMenu() {
+  clearInterval(timerInterval);
+  gameStarted = false;
+  document.getElementById('menu-overlay').style.display = 'flex';
+  document.getElementById('game-over').style.display = 'none';
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  matchTime = 60;
+  matchEnded = false;
+  document.getElementById('game-over').style.display = 'none';
+  timerInterval = setInterval(() => {
+    if (gameStarted && matchTime > 0) {
+      matchTime--;
+    } else if (gameStarted && matchTime <= 0) {
+      endMatch();
+    }
+  }, 1000);
+}
+
+function endMatch() {
+  clearInterval(timerInterval);
+  matchEnded = true;
+  
+  let maxKills = -1;
+  let winnerIdx = 0;
+  for (let i = 0; i < activePlayerCount; i++) {
+    if (ships[i].kills > maxKills) { maxKills = ships[i].kills; winnerIdx = i; }
+  }
+
+  const colors = ["#00ffcc", "#ff3366", "#00ff66", "#ffcc00"];
+  const titleEl = document.getElementById('winner-title');
+  const scoreEl = document.getElementById('final-score');
+  
+  titleEl.innerText = `PELAAJA ${winnerIdx + 1} VOITTI!`;
+  titleEl.style.color = colors[winnerIdx];
+  
+  let scores = [];
+  for (let i = 0; i < activePlayerCount; i++) {
+    scores.push(`P${i+1}: ${ships[i].kills}`);
+  }
+  scoreEl.innerText = scores.join(" | ");
+  document.getElementById('game-over').style.display = 'flex';
+}
+
+function restartMatch() {
+  ships.forEach(s => { s.kills = 0; s.reset(); });
+  bullets.length = 0; particles.length = 0;
+  startTimer();
+}
+
+// --- TERRAIN GENERATION ---
+const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
+const ceiling = [], floor = [];
 for (let i = 0; i < numSegs; i++) {
   ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
   floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
@@ -157,9 +419,7 @@ const bases = [
 ];
 
 bases.forEach(b => {
-  let start = Math.floor(b.x1 / segW);
-  let end = Math.ceil(b.x2 / segW);
-  for (let i = start; i <= end; i++) {
+  for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) {
     if (i < numSegs) floor[i] = b.y;
   }
 });
@@ -188,147 +448,61 @@ function getCeilingY(x) {
   return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
 }
 
-// Erän tila
-let matchTime = 60;
-let matchEnded = false;
-let timerInterval = null;
-
-function startTimer() {
-  clearInterval(timerInterval);
-  matchTime = 60;
-  matchEnded = false;
-  document.getElementById('game-over').style.display = 'none';
-  
-  timerInterval = setInterval(() => {
-    if (matchTime > 0) {
-      matchTime--;
-      document.getElementById('timer').innerText = `Aikaa jäljellä: ${matchTime}s`;
-    } else {
-      endMatch();
-    }
-  }, 1000);
-}
-
-function endMatch() {
-  clearInterval(timerInterval);
-  matchEnded = true;
-  
-  const p1Kills = ships[0].kills;
-  const p2Kills = ships[1].kills;
-  
-  const titleEl = document.getElementById('winner-title');
-  const scoreEl = document.getElementById('final-score');
-  
-  if (p1Kills > p2Kills) {
-    titleEl.innerText = "PELAAJA 1 VOITTI!";
-    titleEl.style.color = "#00ffcc";
-  } else if (p2Kills > p1Kills) {
-    titleEl.innerText = "PELAAJA 2 VOITTI!";
-    titleEl.style.color = "#ff3366";
-  } else {
-    titleEl.innerText = "TASAPELI!";
-    titleEl.style.color = "#ffcc00";
-  }
-  
-  scoreEl.innerText = `Tapot - P1 (Sininen): ${p1Kills}  |  P2 (Punainen): ${p2Kills}`;
-  document.getElementById('game-over').style.display = 'flex';
-}
-
-function restartMatch() {
-  ships[0].kills = 0;
-  ships[1].kills = 0;
-  ships[0].reset();
-  ships[1].reset();
-  bullets.length = 0;
-  particles.length = 0;
-  startTimer();
-}
-
-// Alus
+// --- PLAYER SHIP ENTITY ---
 class Ship {
-  constructor(id, x, y, color, controls) {
-    this.id = id;
-    this.startX = x;
-    this.startY = y;
-    this.color = color;
-    this.controls = controls;
+  constructor(id, x, y, color) {
+    this.id = id; this.startX = x; this.startY = y; this.color = color;
     this.kills = 0;
+    this.remoteCtrl = { left: false, right: false, thrust: false, fire: false };
     this.reset();
   }
-
+  
   reset() {
-    this.x = this.startX;
-    this.y = this.startY;
-    this.vx = 0;
-    this.vy = 0;
-    this.angle = -Math.PI / 2;
-    this.hp = 150;
-    this.fuel = 100;
-    this.isDead = false;
-    this.dockedBase = null;
-    this.cooldown = 0;
+    this.x = this.startX; this.y = this.startY;
+    this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
+    this.hp = 150; this.fuel = 100; 
+    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
   }
 
-  update(bullets, particles) {
-    if (this.isDead || matchEnded) return;
+  update(ctrl, bullets, particles) {
+    if (this.isDead || matchEnded || !gameStarted) return;
 
-    if (keys[this.controls.left]) this.angle -= 0.07;
-    if (keys[this.controls.right]) this.angle += 0.07;
+    if (ctrl.left) this.angle -= 0.07;
+    if (ctrl.right) this.angle += 0.07;
 
-    if (keys[this.controls.thrust] && this.fuel > 0) {
-      if (this.dockedBase) {
-        this.dockedBase = null;
-        this.vy = -3.0;
-      }
+    if (ctrl.thrust && this.fuel > 0) {
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
-      this.fuel = Math.max(0, this.fuel - 0.15);
-      playSound('thrust');
+      this.fuel = Math.max(0, this.fuel - 0.0375);
 
       particles.push({
-        x: this.x - Math.cos(this.angle) * 12,
-        y: this.y - Math.sin(this.angle) * 12,
-        vx: -Math.cos(this.angle) * 2 + (Math.random() - 0.5),
-        vy: -Math.sin(this.angle) * 2 + (Math.random() - 0.5),
-        life: 12, color: '#ffaa00'
+        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
+        vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
       });
     }
 
-    if (keys[this.controls.fire] && this.cooldown <= 0) {
+    if (ctrl.fire && this.cooldown <= 0) {
       bullets.push({
-        x: this.x + Math.cos(this.angle) * 16,
-        y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 12,
-        vy: Math.sin(this.angle) * 12,
+        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
+        vx: Math.cos(this.angle) * 12, vy: Math.sin(this.angle) * 12,
         owner: this.id, life: 80
       });
-      playSound('laser');
-      this.cooldown = 10;
+      this.vx -= Math.cos(this.angle) * 0.35;
+      this.vy -= Math.sin(this.angle) * 0.35;
+      this.cooldown = 12;
     }
     if (this.cooldown > 0) this.cooldown--;
 
     if (!this.dockedBase) {
-      this.vy += 0.05;
-      this.vx *= 0.99;
-      this.vy *= 0.99;
-      this.x += this.vx;
-      this.y += this.vy;
+      this.vy += 0.05; this.vx *= 0.99; this.vy *= 0.99;
+      this.x += this.vx; this.y += this.vy;
     } else {
-      this.vx = 0;
-      this.vy = 0;
+      this.vx = 0; this.vy = 0;
       this.y = this.dockedBase.y - 10;
       this.angle += (-Math.PI / 2 - this.angle) * 0.2;
-
       if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
-    }
-
-    if (this.hp < 60 && Math.random() < 0.4) {
-      particles.push({
-        x: this.x, y: this.y,
-        vx: (Math.random() - 0.5), vy: -1,
-        life: 20, color: '#555'
-      });
     }
 
     if (!this.dockedBase && this.vy >= 0) {
@@ -337,8 +511,7 @@ class Ship {
           if (Math.hypot(this.vx, this.vy) < 4.0) {
             this.dockedBase = b;
             this.y = b.y - 10;
-            this.vx = 0;
-            this.vy = 0;
+            this.vx = 0; this.vy = 0;
             break;
           }
         }
@@ -347,211 +520,215 @@ class Ship {
 
     let ceilY = getCeilingY(this.x);
     let floorY = getFloorY(this.x);
-    let hitObstacle = false;
-
-    for (let obs of obstacles) {
-      if (Math.hypot(this.x - obs.x, this.y - obs.y) < obs.radius + 10) {
-        hitObstacle = true;
-        break;
-      }
-    }
-
+    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
     let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
 
     if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
       let speed = Math.hypot(this.vx, this.vy);
       if (speed > 4.0 || hitWall) {
         this.explode(particles, null);
-      } else if (speed > 1.0) {
-        this.hp -= (speed - 1.0) * 8;
-        this.vx *= -0.4;
-        this.vy *= -0.4;
-        if (this.hp <= 0) this.explode(particles, null);
       } else {
-        this.vx *= -0.2;
-        this.vy *= -0.2;
+        this.hp -= 12.5;
+        this.vx *= -0.4; this.vy *= -0.4;
+        if (this.hp <= 0) this.explode(particles, null);
       }
     }
   }
 
   explode(particles, killerId) {
-    this.isDead = true;
-    this.dockedBase = null;
-    playSound('boom');
-
-    if (killerId !== null && killerId !== undefined) {
-      ships[killerId].kills++;
-    }
-
+    this.isDead = true; this.dockedBase = null;
+    if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
     for (let i = 0; i < 30; i++) {
       particles.push({
-        x: this.x, y: this.y,
-        vx: (Math.random() - 0.5) * 8,
-        vy: (Math.random() - 0.5) * 8,
-        life: 40, color: i % 2 === 0 ? '#ff3300' : '#ffcc00'
+        x: this.x, y: this.y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 35, color: '#ff3300'
       });
     }
     setTimeout(() => {
-      if (!matchEnded) this.reset();
+      if (!matchEnded && gameStarted) this.reset();
     }, 2000);
   }
 
   draw() {
     if (this.isDead) return;
-
     ctx.save();
     ctx.translate(this.x - camera.x, this.y - camera.y);
     ctx.rotate(this.angle);
-
-    ctx.strokeStyle = this.color;
-    ctx.fillStyle = '#05080f';
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-    ctx.moveTo(16, 0);
-    ctx.lineTo(-10, -8);
-    ctx.lineTo(-4, 0);
-    ctx.lineTo(-10, 8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
+    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
     ctx.restore();
 
     if (this.dockedBase) {
-      ctx.fillStyle = '#00ff66';
-      ctx.font = '12px monospace';
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
       ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
     }
   }
 }
 
 const ships = [
-  new Ship(0, 500, WORLD.height - 290, '#00ffcc', { left: 'KeyA', right: 'KeyD', thrust: 'KeyW', fire: 'Space' }),
-  new Ship(1, 580, WORLD.height - 290, '#ff3366', { left: 'ArrowLeft', right: 'ArrowRight', thrust: 'ArrowUp', fire: 'Enter' })
+  new Ship(0, 480, WORLD.height - 290, '#00ffcc'),
+  new Ship(1, 530, WORLD.height - 290, '#ff3366'),
+  new Ship(2, 580, WORLD.height - 290, '#00ff66'),
+  new Ship(3, 630, WORLD.height - 290, '#ffcc00')
 ];
 
 const bullets = [];
 const particles = [];
 
-function loop() {
-  ships.forEach(s => s.update(bullets, particles));
-
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    let b = bullets[i];
-    b.x += b.vx;
-    b.y += b.vy;
-    b.life--;
-
-    let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-    if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs) {
-      bullets.splice(i, 1);
-      continue;
-    }
-
-    for (let s of ships) {
-      if (!s.isDead && s.id !== b.owner) {
-        if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
-          s.hp -= 25;
-          if (s.hp <= 0) s.explode(particles, b.owner);
-          bullets.splice(i, 1);
-          break;
+// --- MAIN GAME LOOP ---
+function startLoop() {
+  function loop() {
+    if (gameStarted) {
+      if (!isOnline || isHost) {
+        // Collect Inputs
+        let ctrls = [];
+        if (isOnline && isHost) {
+          ctrls[0] = { left: keys['KeyA'] || keys['ArrowLeft'], right: keys['KeyD'] || keys['ArrowRight'], thrust: keys['KeyW'] || keys['ArrowUp'], fire: keys['Space'] || keys['Enter'] };
+          for (let i = 1; i < activePlayerCount; i++) {
+            ctrls[i] = ships[i].remoteCtrl;
+          }
+        } else {
+          ctrls[0] = { left: keys['KeyA'], right: keys['KeyD'], thrust: keys['KeyW'], fire: keys['Space'] };
+          ctrls[1] = { left: keys['ArrowLeft'], right: keys['ArrowRight'], thrust: keys['ArrowUp'], fire: keys['Enter'] };
+          ctrls[2] = { left: keys['KeyJ'], right: keys['KeyL'], thrust: keys['KeyI'], fire: keys['KeyU'] };
+          ctrls[3] = { left: keys['Numpad4'], right: keys['Numpad6'], thrust: keys['Numpad8'], fire: keys['Numpad0'] };
         }
+
+        // Update physics
+        for (let i = 0; i < activePlayerCount; i++) {
+          ships[i].update(ctrls[i], bullets, particles);
+        }
+
+        // Update Bullets & Particles
+        if (!matchEnded) {
+          for (let i = bullets.length - 1; i >= 0; i--) {
+            let b = bullets[i];
+            b.x += b.vx; b.y += b.vy; b.vy += 0.04; b.life--;
+            let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
+            if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
+              bullets.splice(i, 1);
+              continue;
+            }
+            for (let s of ships) {
+              if (!s.isDead && s.id !== b.owner) {
+                if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
+                  s.hp -= 25;
+                  if (s.hp <= 0) s.explode(particles, b.owner);
+                  bullets.splice(i, 1);
+                  break;
+                }
+              }
+            }
+          }
+
+          for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].x += particles[i].vx;
+            particles[i].y += particles[i].vy;
+            particles[i].life--;
+            if (particles[i].life <= 0) particles.splice(i, 1);
+          }
+        }
+
+        // Broadcast to clients if host
+        if (isOnline && isHost && clientConns.length > 0) {
+          const syncData = {
+            type: 'sync',
+            matchTime: matchTime,
+            matchEnded: matchEnded,
+            ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
+            bullets: bullets.map(b => ({ x: b.x, y: b.y }))
+          };
+          clientConns.forEach(c => c.send(syncData));
+        }
+      }
+
+      // Camera Tracking
+      let trackedIdx = isOnline ? myPlayerIdx : 0;
+      let targetShip = ships[trackedIdx];
+      if (targetShip && !targetShip.isDead) {
+        camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.1;
+        camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.1;
       }
     }
 
-    if (b.life <= 0) bullets.splice(i, 1);
-  }
+    // --- RENDER ---
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  for (let i = particles.length - 1; i >= 0; i--) {
-    let p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
+    // Terrain
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
 
-  if (!ships[0].isDead) {
-    camera.x += (ships[0].x - canvas.width / 2 - camera.x) * 0.1;
-    camera.y += (ships[0].y - canvas.height / 2 - camera.y) * 0.1;
-    camera.x = Math.max(0, Math.min(WORLD.width - canvas.width, camera.x));
-    camera.y = Math.max(0, Math.min(WORLD.height - canvas.height, camera.y));
-  }
-
-  // PIIRTO
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Katto
-  ctx.fillStyle = '#181b28';
-  ctx.strokeStyle = '#00ffcc';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(-camera.x, -camera.y);
-  for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
-  ctx.lineTo(WORLD.width - camera.x, -camera.y);
-  ctx.fill(); ctx.stroke();
-
-  // Lattia
-  ctx.beginPath();
-  for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
-  ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y);
-  ctx.lineTo(-camera.x, WORLD.height - camera.y);
-  ctx.fill(); ctx.stroke();
-
-  // Energiaseinät
-  ctx.fillStyle = '#ff3366';
-  ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
-  ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
-
-  // Ilmaesteet / Saarekkeet
-  ctx.fillStyle = '#181b28';
-  ctx.strokeStyle = '#00ffcc';
-  ctx.lineWidth = 3;
-  obstacles.forEach(o => {
     ctx.beginPath();
-    ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  });
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
+    ctx.fill(); ctx.stroke();
 
-  // Tukikohdat
-  ctx.strokeStyle = '#00ff66';
-  ctx.lineWidth = 5;
-  bases.forEach(b => {
-    ctx.beginPath();
-    ctx.moveTo(b.x1 - camera.x, b.y - camera.y);
-    ctx.lineTo(b.x2 - camera.x, b.y - camera.y);
-    ctx.stroke();
-  });
+    // Map Borders
+    ctx.fillStyle = '#ff3366';
+    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
+    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
 
-  // Partikkelit
-  particles.forEach(p => {
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
-  });
+    // Obstacles
+    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+    obstacles.forEach(o => {
+      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
 
-  // Ammukset
-  ctx.fillStyle = '#ffcc00';
-  bullets.forEach(b => {
-    ctx.beginPath();
-    ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
+    // Landing Bases
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
+    bases.forEach(b => {
+      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
+    });
 
-  // Alukset
-  ships.forEach(s => s.draw());
+    // Particles & Bullets
+    particles.forEach(p => {
+      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
+    });
 
-  document.getElementById('p1-hud').innerText = `P1 (WASD) HP: ${Math.ceil(ships[0].hp)} | FUEL: ${Math.ceil(ships[0].fuel)} | KILLS: ${ships[0].kills}`;
-  document.getElementById('p2-hud').innerText = `P2 (Nuolet) HP: ${Math.ceil(ships[1].hp)} | FUEL: ${Math.ceil(ships[1].fuel)} | KILLS: ${ships[1].kills}`;
+    ctx.fillStyle = '#ffcc00';
+    bullets.forEach(b => {
+      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
+    });
 
-  requestAnimationFrame(loop);
+    // Ships
+    ships.forEach((s, idx) => {
+      if (idx < activePlayerCount) s.draw();
+    });
+
+    // Minimap
+    const mapW = 180, mapH = 110;
+    const mapX = canvas.width - mapW - 20, mapY = 50;
+
+    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    ships.forEach((s, idx) => {
+      if (!s.isDead && idx < activePlayerCount) {
+        let sx = mapX + (s.x / WORLD.width) * mapW;
+        let sy = mapY + (s.y / WORLD.height) * mapH;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    });
+
+    // HUD Update
+    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} | FUEL:${Math.ceil(ships[0].fuel)} | K:${ships[0].kills}`;
+    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} | FUEL:${Math.ceil(ships[1].fuel)} | K:${ships[1].kills}`;
+    if (activePlayerCount >= 3) document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} | FUEL:${Math.ceil(ships[2].fuel)} | K:${ships[2].kills}`;
+    if (activePlayerCount >= 4) document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} | FUEL:${Math.ceil(ships[3].fuel)} | K:${ships[3].kills}`;
+    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
+
+    requestAnimationFrame(loop);
+  }
+  loop();
 }
 
-window.onload = function() {
-  resize();
-  startTimer();
-  loop();
-};
+window.onload = startLoop;
 </script>
 </body>
 </html>
