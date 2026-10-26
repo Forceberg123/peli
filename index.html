@@ -442,21 +442,27 @@ function joinOnlineGame() {
       } else if (data.type === 'sync') {
         matchTime = data.matchTime;
         matchEnded = data.matchEnded;
-        data.ships.forEach((s, idx) => {
-          if (!ships[idx]) {
-            const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
-            ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
-          }
-          ships[idx].x = s.x; ships[idx].y = s.y;
-          ships[idx].angle = s.angle; ships[idx].hp = s.hp;
-          ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-          ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
-        });
+        if (data.ships) {
+          data.ships.forEach((s, idx) => {
+            if (!ships[idx]) {
+              const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
+              ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
+            }
+            ships[idx].x = s.x; ships[idx].y = s.y;
+            ships[idx].angle = s.angle; ships[idx].hp = s.hp;
+            ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+            ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
+          });
+        }
+        
+        // TURVALLINEN AMMUSTEN PÄIVITYS (Estetään jäätyö / crash mobiilissa)
         bullets.length = 0;
-        data.bullets.forEach(b => bullets.push(b));
+        if (data.bullets && Array.isArray(data.bullets)) {
+          data.bullets.forEach(b => bullets.push(b));
+        }
         
         // VASTAANOTETTUJEN RÄJÄHDYSEFEKTIEN SUORITUS VIERAALLA
-        if (data.fx) {
+        if (data.fx && Array.isArray(data.fx)) {
           data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
         }
       }
