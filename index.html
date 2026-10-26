@@ -382,9 +382,12 @@ function hostOnlineGame() {
     
     const pIdx = clientConns.length + 1;
     clientConns.push(conn);
-    conn.send({ type: 'init', playerIdx: pIdx });
 
-    setNetStatus(`Pelaaja liittyi! Yhteensä: ${clientConns.length + 1}/4<br>Koodi: <b>${peer.id}</b>`);
+    conn.on('open', () => {
+      // Lähetetään alkutieto vastataustakuittauksella kun yhteys on auki
+      conn.send({ type: 'init', playerIdx: pIdx });
+      setNetStatus(`Pelaaja liittyi! Yhteensä: ${clientConns.length + 1}/4<br>Koodi: <b>${peer.id}</b>`);
+    });
 
     conn.on('data', (data) => {
       if (data.type === 'input' && ships[pIdx]) {
@@ -451,6 +454,8 @@ function joinOnlineGame() {
         });
         bullets.length = 0;
         data.bullets.forEach(b => bullets.push(b));
+        
+        // VASTAANOTETTUJEN RÄJÄHDYSEFEKTIEN SUORITUS VIERAALLA
         if (data.fx) {
           data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
         }
