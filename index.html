@@ -342,11 +342,21 @@ class Ship {
       if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
-      this.fuel = Math.max(0, this.fuel - 0.15);
+      this.fuel = Math.max(0, this.fuel - 0.0375); // Polttoaineen kulutus vähennetty 75%
 
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
         vx: -Math.cos(this.angle) * 2, vy: -Math.sin(this.angle) * 2, life: 12, color: '#ffaa00'
+      });
+    }
+
+    // Savu-efekti, kun HP on alle 25% (< 37.5)
+    if (this.hp < 37.5 && Math.random() < 0.4) {
+      particles.push({
+        x: this.x - Math.cos(this.angle) * 8 + (Math.random() - 0.5) * 6,
+        y: this.y - Math.sin(this.angle) * 8 + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 0.8, vy: -Math.random() * 1.2 - 0.5,
+        life: 25, color: 'rgba(150, 150, 150, 0.6)'
       });
     }
 
@@ -396,7 +406,7 @@ class Ship {
       if (speed > 4.0 || hitWall) {
         this.explode(particles, null);
       } else {
-        this.hp -= 25;
+        this.hp -= 12.5; // Törmäysvahinko puolitettu (25 -> 12.5)
         this.vx *= -0.4; this.vy *= -0.4;
         if (this.hp <= 0) this.explode(particles, null);
       }
@@ -594,37 +604,4 @@ function startLoop() {
     for (let i = 0; i < numSegs; i += 2) {
       let mx = mapX + (i * segW / WORLD.width) * mapW;
       let my = mapY + (ceiling[i] / WORLD.height) * mapH;
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-    ctx.stroke();
-
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i += 2) {
-      let mx = mapX + (i * segW / WORLD.width) * mapW;
-      let my = mapY + (floor[i] / WORLD.height) * mapH;
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-    ctx.stroke();
-
-    ships.forEach(s => {
-      if (!s.isDead) {
-        let sx = mapX + (s.x / WORLD.width) * mapW;
-        let sy = mapY + (s.y / WORLD.height) * mapH;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(sx - 2, sy - 2, 4, 4);
-      }
-    });
-
-    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} | FUEL:${Math.ceil(ships[0].fuel)} | K:${ships[0].kills}`;
-    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} | FUEL:${Math.ceil(ships[1].fuel)} | K:${ships[1].kills}`;
-    document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} | FUEL:${Math.ceil(ships[2].fuel)} | K:${ships[2].kills}`;
-    document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} | FUEL:${Math.ceil(ships[3].fuel)} | K:${ships[3].kills}`;
-    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
-
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-</script>
-</body>
-</html>
+      if
