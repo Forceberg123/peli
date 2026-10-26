@@ -384,7 +384,7 @@ function hostOnlineGame() {
     clientConns.push(conn);
 
     conn.on('open', () => {
-      // Lähetetään alkutieto vastataustakuittauksella kun yhteys on auki
+      // Lähetetään alkutieto vasta kuittauksella kun yhteys on auki
       conn.send({ type: 'init', playerIdx: pIdx });
       setNetStatus(`Pelaaja liittyi! Yhteensä: ${clientConns.length + 1}/4<br>Koodi: <b>${peer.id}</b>`);
     });
