@@ -45,7 +45,7 @@
     #status-msg { margin-top: 20px; font-size: 16px; color: #ffcc00; max-width: 80%; line-height: 1.4; word-break: break-all; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
   </style>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -154,6 +154,11 @@ function restartMatch() {
 }
 
 document.getElementById('btn-host').onclick = () => {
+  if (typeof Peer === 'undefined') {
+    statusEl.innerText = "Virhe: PeerJS-kirjasto ei latautunut!";
+    return;
+  }
+
   statusEl.innerText = "Yhdistetään PeerJS-palvelimeen...";
   try {
     if (peer) peer.destroy();
@@ -227,6 +232,11 @@ document.getElementById('btn-host').onclick = () => {
 };
 
 document.getElementById('btn-join').onclick = () => {
+  if (typeof Peer === 'undefined') {
+    statusEl.innerText = "Virhe: PeerJS-kirjasto ei latautunut!";
+    return;
+  }
+
   let code = document.getElementById('room-input').value.trim();
   if (!code) { statusEl.innerText = "Syötä huonekoodi!"; return; }
   statusEl.innerText = "Yhdistetään isäntään...";
@@ -342,7 +352,7 @@ class Ship {
       if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
       this.vx += Math.cos(this.angle) * 0.2;
       this.vy += Math.sin(this.angle) * 0.2;
-      this.fuel = Math.max(0, this.fuel - 0.0375); // Polttoaineen kulutus vähennetty 75%
+      this.fuel = Math.max(0, this.fuel - 0.0375);
 
       particles.push({
         x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
@@ -350,7 +360,6 @@ class Ship {
       });
     }
 
-    // Savu-efekti, kun HP on alle 25% (< 37.5)
     if (this.hp < 37.5 && Math.random() < 0.4) {
       particles.push({
         x: this.x - Math.cos(this.angle) * 8 + (Math.random() - 0.5) * 6,
@@ -406,7 +415,7 @@ class Ship {
       if (speed > 4.0 || hitWall) {
         this.explode(particles, null);
       } else {
-        this.hp -= 12.5; // Törmäysvahinko puolitettu (25 -> 12.5)
+        this.hp -= 12.5;
         this.vx *= -0.4; this.vy *= -0.4;
         if (this.hp <= 0) this.explode(particles, null);
       }
@@ -577,31 +586,4 @@ function startLoop() {
 
     ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
     bases.forEach(b => {
-      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
-    });
-
-    particles.forEach(p => {
-      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
-    });
-
-    ctx.fillStyle = '#ffcc00';
-    bullets.forEach(b => {
-      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
-    });
-
-    ships.forEach(s => s.draw());
-
-    const mapW = 180, mapH = 110;
-    const mapX = canvas.width - mapW - 20, mapY = 50;
-
-    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
-    ctx.fillRect(mapX, mapY, mapW, mapH);
-    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
-    ctx.strokeRect(mapX, mapY, mapW, mapH);
-
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i += 2) {
-      let mx = mapX + (i * segW / WORLD.width) * mapW;
-      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
-      if
+      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y
