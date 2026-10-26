@@ -124,7 +124,7 @@
       <div class="menu-group">
         <label>Luo peli tai liity huoneeseen:</label>
         <button class="start-btn" onclick="hostOnlineGame()" style="margin-top: 0; margin-bottom: 12px;">LUO UUSI NETTIPELI (Host)</button>
-        <input type="text" id="join-room-id" placeholder="Syötä Huone-Koodi liittyäksesi" maxlength="6">
+        <input type="text" id="join-room-id" placeholder="Syötä Huone-Koodi liittyäksesi" maxlength="12">
         <button class="btn" style="width: 100%; padding: 10px; margin: 0;" onclick="joinOnlineGame()">LIITY HUONEESEEN</button>
       </div>
 
@@ -174,7 +174,7 @@
   <button class="btn" style="padding: 10px 20px; font-size: 16px;" onclick="restartMatch()">UUSI ERÄ</button>
 </div>
 
-<!-- KOSKETUSNAAPIT MOBIILILLE -->
+<!-- KOSKETUSNAPIT MOBIILILLE -->
 <div id="touch-controls">
   <div class="touch-group">
     <div class="touch-btn" id="t-left">◄</div>
@@ -264,7 +264,7 @@ function setNetStatus(msg) {
 }
 
 function generateRoomId() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return 'cave-' + Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function hostOnlineGame() {
@@ -276,15 +276,33 @@ function hostOnlineGame() {
   setNetStatus("Yhdistetään palvelimelle...");
   
   try {
-    peer = new Peer(roomId);
+    if (peer) { peer.destroy(); }
+    // Lisätty ICE-palvelimet ja luotettavat verkkoasetukset alustukseen
+    peer = new Peer(roomId, {
+      debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
   } catch(e) {
-    setNetStatus("Virhe verkkoalustuksessa. Sandbox saattaa estää yhteydet.");
+    setNetStatus("Virhe verkkoalustuksessa: " + e.message);
     return;
   }
 
   peer.on('open', (id) => {
     setNetStatus(`Huone luotu! <b>Koodi: <span style="color:#fff; font-size:16px;">${id}</span></b><br>Odotetaan muita pelaajia (1/4)...`);
-    document.getElementById('menu-card').innerHTML += `<button class="start-btn" onclick="startOnlineMatch()">KÄYNNISTÄ PELI NÄILLÄ PELAAJILLA</button>`;
+    
+    if (!document.getElementById('start-online-btn')) {
+      const startBtn = document.createElement('button');
+      startBtn.id = 'start-online-btn';
+      startBtn.className = 'start-btn';
+      startBtn.innerText = 'KÄYNNISTÄ PELI NÄILLÄ PELAAJILLA';
+      startBtn.onclick = startOnlineMatch;
+      document.getElementById('panel-online').appendChild(startBtn);
+    }
   });
 
   peer.on('connection', (conn) => {
@@ -298,7 +316,7 @@ function hostOnlineGame() {
     clientConns.push(conn);
     conn.send({ type: 'init', playerIdx: pIdx });
 
-    setNetStatus(`Huone Koodi: <b>${roomId}</b><br>Pelaajia liittynyt: ${clientConns.length + 1}/4`);
+    setNetStatus(`Huone Koodi: <b>${peer.id}</b><br>Pelaajia liittynyt: ${clientConns.length + 1}/4`);
 
     conn.on('data', (data) => {
       if (data.type === 'input') {
@@ -312,7 +330,8 @@ function hostOnlineGame() {
   });
 
   peer.on('error', (err) => {
-    setNetStatus("Verkkovirhe: " + err.type);
+    console.error(err);
+    setNetStatus("Verkkovirhe: " + err.type + (err.message ? " (" + err.message + ")" : ""));
   });
 }
 
@@ -324,10 +343,24 @@ function joinOnlineGame() {
   isHost = false;
 
   setNetStatus("Yhdistetään huoneeseen " + roomId + "...");
-  peer = new Peer();
+  try {
+    if (peer) { peer.destroy(); }
+    peer = new Peer({
+      debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
+  } catch(e) {
+    setNetStatus("Liittymisvirhe alustuksessa: " + e.message);
+    return;
+  }
 
   peer.on('open', () => {
-    hostConn = peer.connect(roomId);
+    hostConn = peer.connect(roomId, { reliable: true });
 
     hostConn.on('open', () => {
       setNetStatus("Yhdistetty! Odotetaan isännän käynnistävän pelin...");
@@ -342,7 +375,6 @@ function joinOnlineGame() {
         gameStarted = true;
         updateHUDVisibility();
       } else if (data.type === 'sync') {
-        // Sync state from Host
         matchTime = data.matchTime;
         matchEnded = data.matchEnded;
         data.ships.forEach((s, idx) => {
@@ -365,438 +397,8 @@ function joinOnlineGame() {
   });
 
   peer.on('error', (err) => {
-    setNetStatus("Liittymisvirhe: Tarkista huonekoodi.");
+    console.error(err);
+    setNetStatus("Liittymisvirhe: Tarkista huonekoodi tai palomuuri.");
   });
 }
-
-function sendClientInput() {
-  if (!hostConn || !hostConn.open) return;
-  let ctrl = {
-    left: keys['KeyA'] || keys['ArrowLeft'] || touchState.left,
-    right: keys['KeyD'] || keys['ArrowRight'] || touchState.right,
-    thrust: keys['KeyW'] || keys['ArrowUp'] || touchState.thrust,
-    fire: keys['Space'] || keys['Enter'] || touchState.fire
-  };
-  hostConn.send({ type: 'input', ctrl: ctrl });
-}
-
-function startOnlineMatch() {
-  activePlayerCount = clientConns.length + 1;
-  clientConns.forEach(c => {
-    c.send({ type: 'start', playerCount: activePlayerCount });
-  });
-  startLocalGame();
-}
-
-// --- LOCAL GAME CONTROLS ---
-function startLocalGame() {
-  document.getElementById('menu-overlay').style.display = 'none';
-  gameStarted = true;
-  updateHUDVisibility();
-  restartMatch();
-}
-
-function updateHUDVisibility() {
-  document.getElementById('p3-hud').style.display = activePlayerCount >= 3 ? 'block' : 'none';
-  document.getElementById('p4-hud').style.display = activePlayerCount >= 4 ? 'block' : 'none';
-}
-
-function showMenu() {
-  clearInterval(timerInterval);
-  gameStarted = false;
-  document.getElementById('menu-overlay').style.display = 'flex';
-  document.getElementById('game-over').style.display = 'none';
-}
-
-function startTimer() {
-  clearInterval(timerInterval);
-  matchTime = 60;
-  matchEnded = false;
-  document.getElementById('game-over').style.display = 'none';
-  timerInterval = setInterval(() => {
-    if (gameStarted && matchTime > 0) {
-      matchTime--;
-    } else if (gameStarted && matchTime <= 0) {
-      endMatch();
-    }
-  }, 1000);
-}
-
-function endMatch() {
-  clearInterval(timerInterval);
-  matchEnded = true;
-  
-  let maxKills = -1;
-  let winnerIdx = 0;
-  for (let i = 0; i < activePlayerCount; i++) {
-    if (ships[i].kills > maxKills) { maxKills = ships[i].kills; winnerIdx = i; }
-  }
-
-  const colors = ["#00ffcc", "#ff3366", "#00ff66", "#ffcc00"];
-  const titleEl = document.getElementById('winner-title');
-  const scoreEl = document.getElementById('final-score');
-  
-  titleEl.innerText = `PELAAJA ${winnerIdx + 1} VOITTI!`;
-  titleEl.style.color = colors[winnerIdx];
-  
-  let scores = [];
-  for (let i = 0; i < activePlayerCount; i++) {
-    scores.push(`P${i+1}: ${ships[i].kills}`);
-  }
-  scoreEl.innerText = scores.join(" | ");
-  document.getElementById('game-over').style.display = 'flex';
-}
-
-function restartMatch() {
-  ships.forEach(s => { s.kills = 0; s.reset(); });
-  bullets.length = 0; particles.length = 0;
-  startTimer();
-}
-
-// --- TERRAIN GENERATION ---
-const segW = 40, numSegs = Math.ceil(WORLD.width / segW) + 1;
-const ceiling = [], floor = [];
-for (let i = 0; i < numSegs; i++) {
-  ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
-  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
-}
-
-const bases = [
-  { x1: 400, x2: 700, y: WORLD.height - 280 },
-  { x1: 2000, x2: 2300, y: WORLD.height - 320 },
-  { x1: 3800, x2: 4100, y: WORLD.height - 280 }
-];
-
-bases.forEach(b => {
-  for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) {
-    if (i < numSegs) floor[i] = b.y;
-  }
-});
-
-const obstacles = [
-  { x: 1200, y: 1200, radius: 140 },
-  { x: 1600, y: 800, radius: 100 },
-  { x: 2800, y: 1500, radius: 180 },
-  { x: 3400, y: 900, radius: 120 },
-  { x: 4400, y: 1300, radius: 150 }
-];
-
-function getFloorY(x) {
-  let i = Math.floor(x / segW);
-  if (i < 0) return floor[0];
-  if (i >= numSegs - 1) return floor[numSegs - 1];
-  let t = (x % segW) / segW;
-  return floor[i] * (1 - t) + floor[i + 1] * t;
-}
-
-function getCeilingY(x) {
-  let i = Math.floor(x / segW);
-  if (i < 0) return ceiling[0];
-  if (i >= numSegs - 1) return ceiling[numSegs - 1];
-  let t = (x % segW) / segW;
-  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
-}
-
-// --- PLAYER SHIP ENTITY ---
-class Ship {
-  constructor(id, x, y, color) {
-    this.id = id; this.startX = x; this.startY = y; this.color = color;
-    this.kills = 0;
-    this.remoteCtrl = { left: false, right: false, thrust: false, fire: false };
-    this.reset();
-  }
-  
-  reset() {
-    this.x = this.startX; this.y = this.startY;
-    this.vx = 0; this.vy = 0; this.angle = -Math.PI/2;
-    this.hp = 150; this.fuel = 100; 
-    this.isDead = false; this.dockedBase = null; this.cooldown = 0;
-  }
-
-  update(ctrl, bullets, particles) {
-    if (this.isDead || matchEnded || !gameStarted) return;
-
-    // Swift handling / turning speed
-    if (ctrl.left) this.angle -= 0.085;
-    if (ctrl.right) this.angle += 0.085;
-
-    // Increased thrust power for faster acceleration
-    if (ctrl.thrust && this.fuel > 0) {
-      if (this.dockedBase) { this.dockedBase = null; this.vy = -4.0; }
-      this.vx += Math.cos(this.angle) * 0.38;
-      this.vy += Math.sin(this.angle) * 0.38;
-      this.fuel = Math.max(0, this.fuel - 0.04);
-
-      particles.push({
-        x: this.x - Math.cos(this.angle) * 12, y: this.y - Math.sin(this.angle) * 12,
-        vx: -Math.cos(this.angle) * 3, vy: -Math.sin(this.angle) * 3, life: 12, color: '#ffaa00'
-      });
-    }
-
-    if (ctrl.fire && this.cooldown <= 0) {
-      bullets.push({
-        x: this.x + Math.cos(this.angle) * 16, y: this.y + Math.sin(this.angle) * 16,
-        vx: Math.cos(this.angle) * 15, vy: Math.sin(this.angle) * 15,
-        owner: this.id, life: 80
-      });
-      this.vx -= Math.cos(this.angle) * 0.45;
-      this.vy -= Math.sin(this.angle) * 0.45;
-      this.cooldown = 10;
-    }
-    if (this.cooldown > 0) this.cooldown--;
-
-    if (!this.dockedBase) {
-      this.vy += 0.06; 
-      // Slightly lower air resistance for higher top speed
-      this.vx *= 0.992; this.vy *= 0.992;
-      this.x += this.vx; this.y += this.vy;
-    } else {
-      this.vx = 0; this.vy = 0;
-      this.y = this.dockedBase.y - 10;
-      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
-      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
-      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
-    }
-
-    if (!this.dockedBase && this.vy >= 0) {
-      for (let b of bases) {
-        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
-          if (Math.hypot(this.vx, this.vy) < 5.0) {
-            this.dockedBase = b;
-            this.y = b.y - 10;
-            this.vx = 0; this.vy = 0;
-            break;
-          }
-        }
-      }
-    }
-
-    let ceilY = getCeilingY(this.x);
-    let floorY = getFloorY(this.x);
-    let hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
-    let hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
-
-    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
-      let speed = Math.hypot(this.vx, this.vy);
-      if (speed > 5.5 || hitWall) {
-        this.explode(particles, null);
-      } else {
-        this.hp -= 12.5;
-        this.vx *= -0.4; this.vy *= -0.4;
-        if (this.hp <= 0) this.explode(particles, null);
-      }
-    }
-  }
-
-  explode(particles, killerId) {
-    this.isDead = true; this.dockedBase = null;
-    if (killerId !== null && killerId !== undefined) ships[killerId].kills++;
-    for (let i = 0; i < 30; i++) {
-      particles.push({
-        x: this.x, y: this.y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 35, color: '#ff3300'
-      });
-    }
-    setTimeout(() => {
-      if (!matchEnded && gameStarted) this.reset();
-    }, 2000);
-  }
-
-  draw() {
-    if (this.isDead) return;
-    ctx.save();
-    ctx.translate(this.x - camera.x, this.y - camera.y);
-    ctx.rotate(this.angle);
-    ctx.strokeStyle = this.color; ctx.fillStyle = '#05080f'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-10,-8); ctx.lineTo(-4,0); ctx.lineTo(-10,8); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-
-    if (this.dockedBase) {
-      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
-      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
-    }
-  }
-}
-
-const ships = [
-  new Ship(0, 480, WORLD.height - 290, '#00ffcc'),
-  new Ship(1, 530, WORLD.height - 290, '#ff3366'),
-  new Ship(2, 580, WORLD.height - 290, '#00ff66'),
-  new Ship(3, 630, WORLD.height - 290, '#ffcc00')
-];
-
-const bullets = [];
-const particles = [];
-
-// --- MAIN GAME LOOP ---
-function startLoop() {
-  function loop() {
-    if (gameStarted) {
-      if (!isOnline || isHost) {
-        // Collect Inputs
-        let ctrls = [];
-        if (isOnline && isHost) {
-          ctrls[0] = { 
-            left: keys['KeyA'] || keys['ArrowLeft'] || touchState.left, 
-            right: keys['KeyD'] || keys['ArrowRight'] || touchState.right, 
-            thrust: keys['KeyW'] || keys['ArrowUp'] || touchState.thrust, 
-            fire: keys['Space'] || keys['Enter'] || touchState.fire 
-          };
-          for (let i = 1; i < activePlayerCount; i++) {
-            ctrls[i] = ships[i].remoteCtrl;
-          }
-        } else {
-          ctrls[0] = { left: keys['KeyA'] || touchState.left, right: keys['KeyD'] || touchState.right, thrust: keys['KeyW'] || touchState.thrust, fire: keys['Space'] || touchState.fire };
-          ctrls[1] = { left: keys['ArrowLeft'], right: keys['ArrowRight'], thrust: keys['ArrowUp'], fire: keys['Enter'] };
-          ctrls[2] = { left: keys['KeyJ'], right: keys['KeyL'], thrust: keys['KeyI'], fire: keys['KeyU'] };
-          ctrls[3] = { left: keys['Numpad4'], right: keys['Numpad6'], thrust: keys['Numpad8'], fire: keys['Numpad0'] };
-        }
-
-        // Update physics
-        for (let i = 0; i < activePlayerCount; i++) {
-          ships[i].update(ctrls[i], bullets, particles);
-        }
-
-        // Update Bullets & Particles
-        if (!matchEnded) {
-          for (let i = bullets.length - 1; i >= 0; i--) {
-            let b = bullets[i];
-            b.x += b.vx; b.y += b.vy; b.vy += 0.04; b.life--;
-            let hitObs = obstacles.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.radius);
-            if (b.x <= 0 || b.x >= WORLD.width || b.y <= getCeilingY(b.x) || b.y >= getFloorY(b.x) || hitObs || b.life <= 0) {
-              bullets.splice(i, 1);
-              continue;
-            }
-            for (let s of ships) {
-              if (!s.isDead && s.id !== b.owner) {
-                if (Math.hypot(s.x - b.x, s.y - b.y) < 14) {
-                  s.hp -= 25;
-                  if (s.hp <= 0) s.explode(particles, b.owner);
-                  bullets.splice(i, 1);
-                  break;
-                }
-              }
-            }
-          }
-
-          for (let i = particles.length - 1; i >= 0; i--) {
-            particles[i].x += particles[i].vx;
-            particles[i].y += particles[i].vy;
-            particles[i].life--;
-            if (particles[i].life <= 0) particles.splice(i, 1);
-          }
-        }
-
-        // Broadcast to clients if host
-    if (isOnline && isHost && clientConns.length > 0) {
-      const syncData = {
-        type: 'sync',
-        matchTime: matchTime,
-        matchEnded: matchEnded,
-        ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
-        bullets: bullets.map(b => ({ x: b.x, y: b.y }))
-      };
-      clientConns.forEach(c => c.send(syncData));
-    }
-
-    // Camera Tracking: Strictly follow local player's ship in Online mode!
-    let trackedIdx = isOnline ? myPlayerIdx : 0;
-    let targetShip = ships[trackedIdx];
-
-    // In local multiplayer mode only: spectate another ship if current target is dead
-    if (!isOnline && targetShip && targetShip.isDead) {
-      for (let i = 0; i < activePlayerCount; i++) {
-        if (!ships[i].isDead) { targetShip = ships[i]; break; }
-      }
-    }
-
-    if (targetShip) {
-      camera.x += (targetShip.x - canvas.width / 2 - camera.x) * 0.12;
-      camera.y += (targetShip.y - canvas.height / 2 - camera.y) * 0.12;
-    }
-    
-    const camInfo = document.getElementById('cam-info');
-    if (camInfo) camInfo.innerText = isOnline ? `Oma alus: P${myPlayerIdx + 1}` : '';
-  }
-
-  // --- RENDER ---
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Terrain
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-camera.x, -camera.y);
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, -camera.y); ctx.fill(); ctx.stroke();
-
-    ctx.beginPath();
-    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
-    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y); ctx.lineTo(-camera.x, WORLD.height - camera.y);
-    ctx.fill(); ctx.stroke();
-
-    // Map Borders
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(0 - camera.x, 0, 30, WORLD.height);
-    ctx.fillRect(WORLD.width - 30 - camera.x, 0, 30, WORLD.height);
-
-    // Obstacles
-    ctx.fillStyle = '#181b28'; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
-    obstacles.forEach(o => {
-      ctx.beginPath(); ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-    });
-
-    // Landing Bases
-    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 5;
-    bases.forEach(b => {
-      ctx.beginPath(); ctx.moveTo(b.x1 - camera.x, b.y - camera.y); ctx.lineTo(b.x2 - camera.x, b.y - camera.y); ctx.stroke();
-    });
-
-    // Particles & Bullets
-    particles.forEach(p => {
-      ctx.fillStyle = p.color; ctx.fillRect(p.x - camera.x, p.y - camera.y, 3, 3);
-    });
-
-    ctx.fillStyle = '#ffcc00';
-    bullets.forEach(b => {
-      ctx.beginPath(); ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2); ctx.fill();
-    });
-
-    // Ships
-    ships.forEach((s, idx) => {
-      if (idx < activePlayerCount) s.draw();
-    });
-
-    // Minimap
-    const mapW = 180, mapH = 110;
-    const mapX = canvas.width - mapW - 20, mapY = 50;
-
-    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
-    ctx.fillRect(mapX, mapY, mapW, mapH);
-    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
-    ctx.strokeRect(mapX, mapY, mapW, mapH);
-
-    ships.forEach((s, idx) => {
-      if (!s.isDead && idx < activePlayerCount) {
-        let sx = mapX + (s.x / WORLD.width) * mapW;
-        let sy = mapY + (s.y / WORLD.height) * mapH;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(sx - 2, sy - 2, 4, 4);
-      }
-    });
-
-    // HUD Update
-    document.getElementById('p1-hud').innerText = `P1 HP:${Math.ceil(ships[0].hp)} | FUEL:${Math.ceil(ships[0].fuel)} | K:${ships[0].kills}`;
-    document.getElementById('p2-hud').innerText = `P2 HP:${Math.ceil(ships[1].hp)} | FUEL:${Math.ceil(ships[1].fuel)} | K:${ships[1].kills}`;
-    if (activePlayerCount >= 3) document.getElementById('p3-hud').innerText = `P3 HP:${Math.ceil(ships[2].hp)} | FUEL:${Math.ceil(ships[2].fuel)} | K:${ships[2].kills}`;
-    if (activePlayerCount >= 4) document.getElementById('p4-hud').innerText = `P4 HP:${Math.ceil(ships[3].hp)} | FUEL:${Math.ceil(ships[3].fuel)} | K:${ships[3].kills}`;
-    document.getElementById('timer').innerText = `Aikaa: ${matchTime}s`;
-
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-
-window.onload = startLoop;
-</script>
-</body>
-</html>
+<!-- ... existing code -->
