@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
@@ -154,7 +154,7 @@
   <div id="p1-hud" style="color:#00ffcc">P1 HP:150 | FUEL:100 | K:0</div>
   <div id="p2-hud" style="color:#ff3366">P2 HP:150 | FUEL:100 | K:0</div>
   <div id="p3-hud" style="color:#00ff66; display:none;">P3 HP:150 | FUEL:100 | K:0</div>
-  <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HUD</div>
+  <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HP:150 | FUEL:100 | K:0</div>
   <div id="timer">60s</div>
   <div>
     <button class="btn" onclick="showMenu()">Valikko</button>
@@ -216,6 +216,53 @@ bindTouch('t-fire', 'fire');
 
 window.addEventListener('keydown', e => { keys[e.code] = true; if (isOnline && !isHost) sendClientInput(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; if (isOnline && !isHost) sendClientInput(); });
+
+// --- CAVE TERRAIN GENERATION ---
+const segW = 40;
+const numSegs = Math.ceil(WORLD.width / segW) + 1;
+const ceiling = [];
+const floor = [];
+
+for (let i = 0; i < numSegs; i++) {
+  ceiling.push(220 + Math.sin(i * 0.07) * 120 + Math.cos(i * 0.18) * 60);
+  floor.push(WORLD.height - 220 - Math.cos(i * 0.06) * 130 - Math.sin(i * 0.15) * 70);
+}
+
+const bases = [
+  { x1: 400, x2: 700, y: WORLD.height - 280 },
+  { x1: 2000, x2: 2300, y: WORLD.height - 320 },
+  { x1: 3800, x2: 4100, y: WORLD.height - 280 }
+];
+
+bases.forEach(b => {
+  for (let i = Math.floor(b.x1 / segW); i <= Math.ceil(b.x2 / segW); i++) {
+    if (i < numSegs) floor[i] = b.y;
+  }
+});
+
+const obstacles = [
+  { x: 1200, y: 1200, radius: 140 },
+  { x: 1600, y: 800, radius: 100 },
+  { x: 2800, y: 1500, radius: 180 },
+  { x: 3400, y: 900, radius: 120 },
+  { x: 4400, y: 1300, radius: 150 }
+];
+
+function getFloorY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return floor[0];
+  if (i >= numSegs - 1) return floor[numSegs - 1];
+  let t = (x % segW) / segW;
+  return floor[i] * (1 - t) + floor[i + 1] * t;
+}
+
+function getCeilingY(x) {
+  let i = Math.floor(x / segW);
+  if (i < 0) return ceiling[0];
+  if (i >= numSegs - 1) return ceiling[numSegs - 1];
+  let t = (x % segW) / segW;
+  return ceiling[i] * (1 - t) + ceiling[i + 1] * t;
+}
 
 // --- GAME STATE ---
 let activePlayerCount = 2;
@@ -345,7 +392,7 @@ function joinOnlineGame() {
             ships[idx].x = s.x; ships[idx].y = s.y;
             ships[idx].angle = s.angle; ships[idx].hp = s.hp;
             ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-            ships[idx].isDead = s.isDead;
+            ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
           }
         });
         bullets.length = 0;
@@ -399,6 +446,7 @@ function showMenu() {
 class Ship {
   constructor(id, x, y, color) {
     this.id = id;
+    this.startX = x; this.startY = y;
     this.x = x; this.y = y;
     this.vx = 0; this.vy = 0;
     this.angle = -Math.PI / 2;
@@ -407,12 +455,13 @@ class Ship {
     this.fuel = 100;
     this.kills = 0;
     this.isDead = false;
+    this.dockedBase = null;
     this.reload = 0;
     this.remoteCtrl = null;
   }
 
   update() {
-    if (this.isDead) return;
+    if (this.isDead || matchEnded) return;
 
     let ctrl = { left: false, right: false, thrust: false, fire: false };
     if (isOnline) {
@@ -425,7 +474,6 @@ class Ship {
         ctrl = this.remoteCtrl;
       }
     } else {
-      // Local multiplayer
       if (this.id === 0) {
         ctrl.left = keys['KeyA'] || touchState.left; ctrl.right = keys['KeyD'] || touchState.right;
         ctrl.thrust = keys['KeyW'] || touchState.thrust; ctrl.fire = keys['Space'] || touchState.fire;
@@ -437,37 +485,73 @@ class Ship {
 
     if (ctrl.left) this.angle -= 0.07;
     if (ctrl.right) this.angle += 0.07;
+    
     if (ctrl.thrust && this.fuel > 0) {
+      if (this.dockedBase) { this.dockedBase = null; this.vy = -3.0; }
       this.vx += Math.cos(this.angle) * 0.38;
       this.vy += Math.sin(this.angle) * 0.38;
       this.fuel = Math.max(0, this.fuel - 0.0375);
     }
 
-    this.vy += 0.08; // Gravitaatio
-    this.vx *= 0.985; this.vy *= 0.985; // Ilmanvastus
-    this.x += this.vx; this.y += this.vy;
+    if (!this.dockedBase) {
+      this.vy += 0.08; // Gravitaatio
+      this.vx *= 0.985; this.vy *= 0.985; // Ilmanvastus
+      this.x += this.vx; this.y += this.vy;
+    } else {
+      this.vx = 0; this.vy = 0;
+      this.y = this.dockedBase.y - 10;
+      this.angle += (-Math.PI / 2 - this.angle) * 0.2;
+      if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
+      if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
+    }
 
     if (this.reload > 0) this.reload--;
     if (ctrl.fire && this.reload <= 0) {
-      bullets.push(new Bullet(this.x, this.y, this.angle, this.id));
+      bullets.push(new Bullet(this.x + Math.cos(this.angle) * 16, this.y + Math.sin(this.angle) * 16, this.angle, this.id));
       this.reload = 10;
     }
 
-    // Seintötörmäykset
-    if (this.x < 50 || this.x > WORLD.width - 50 || this.y < 50 || this.y > WORLD.height - 50) {
-      this.hp -= 12.5;
-      this.vx *= -0.5; this.vy *= -0.5;
-      if (this.hp <= 0) this.die();
+    // TANKKAUSALUSTALLE LASKUTUTUMINEN
+    if (!this.dockedBase && this.vy >= 0) {
+      for (let b of bases) {
+        if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
+          if (Math.hypot(this.vx, this.vy) < 4.0) {
+            this.dockedBase = b;
+            this.y = b.y - 10;
+            this.vx = 0; this.vy = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    // MAAN MUOTO - JA SEINÄTÖRMÄYKSET
+    const ceilY = getCeilingY(this.x);
+    const floorY = getFloorY(this.x);
+    const hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
+    const hitWall = (this.x <= 30 || this.x >= WORLD.width - 30);
+
+    if (!this.dockedBase && (hitWall || hitObstacle || this.y <= ceilY + 10 || this.y >= floorY - 10)) {
+      const speed = Math.hypot(this.vx, this.vy);
+      if (speed > 4.5 || hitWall) {
+        this.die();
+      } else {
+        this.hp -= 12.5;
+        this.vx *= -0.5; this.vy *= -0.5;
+        if (this.hp <= 0) this.die();
+      }
     }
   }
 
   die() {
     this.isDead = true;
+    this.dockedBase = null;
     this.hp = 0;
     setTimeout(() => {
-      this.x = 200 + this.id * 400;
-      this.y = 300;
+      this.x = 480 + this.id * 100;
+      this.y = WORLD.height - 290;
       this.vx = 0; this.vy = 0;
+      this.angle = -Math.PI / 2;
       this.hp = 150; this.fuel = 100;
       this.isDead = false;
     }, 3000);
@@ -490,6 +574,11 @@ class Ship {
     ctx.stroke();
 
     ctx.restore();
+
+    if (this.dockedBase) {
+      ctx.fillStyle = '#00ff66'; ctx.font = '12px monospace';
+      ctx.fillText("TANKKAA...", this.x - 30 - camera.x, this.y - 22 - camera.y);
+    }
   }
 }
 
@@ -506,7 +595,12 @@ class Bullet {
     this.x += this.vx; this.y += this.vy;
     this.life--;
 
-    // Törmäys aluksiin
+    const hitObs = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius);
+    if (this.x <= 0 || this.x >= WORLD.width || this.y <= getCeilingY(this.x) || this.y >= getFloorY(this.x) || hitObs) {
+      this.life = 0;
+      return;
+    }
+
     ships.forEach(s => {
       if (!s.isDead && s.id !== this.ownerId) {
         const dist = Math.hypot(s.x - this.x, s.y - this.y);
@@ -541,7 +635,7 @@ function initGame() {
 
   const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
   for (let i = 0; i < activePlayerCount; i++) {
-    ships.push(new Ship(i, 300 + i * 400, 300, colors[i]));
+    ships.push(new Ship(i, 480 + i * 100, WORLD.height - 290, colors[i]));
   }
 
   updateHUDVisibility();
@@ -581,7 +675,7 @@ function endMatch() {
   });
 
   document.getElementById('winner-title').innerText = `${winner} VOITTI!`;
-  document.getElementById('final-score').innerText = `Eniten tapettuja aluksia: ${maxKills}`;
+  document.getElementById('final-score').innerText = `Tapot: ${ships.map(s => `P${s.id+1}: ${s.kills}`).join(' | ')}`;
   document.getElementById('game-over').style.display = 'flex';
 }
 
@@ -595,46 +689,68 @@ function loop() {
         if (bullets[i].life <= 0) bullets.splice(i, 1);
       }
 
-      // Synkronoitiin tilat asiakkaille
       if (isOnline && clientConns.length > 0) {
         const syncData = {
           matchTime: matchTime,
           matchEnded: matchEnded,
-          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
+          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
           bullets: bullets.map(b => ({ x: b.x, y: b.y }))
         };
         clientConns.forEach(c => { if (c.open) c.send({ type: 'sync', ...syncData }); });
       }
     } else {
-      // Client-tila
       sendClientInput();
     }
 
-    // KERMA-SEURANTA: LUKITTU EHDOTTOMASTI OMAAN ALUKSEEN
+    // KAMERA SEURAA AINA OMAA ALUSTA
     const myShip = ships[myPlayerIdx];
     if (myShip) {
-      camera.x = myShip.x - canvas.width / 2;
-      camera.y = myShip.y - canvas.height / 2;
+      camera.x += (myShip.x - canvas.width / 2 - camera.x) * 0.1;
+      camera.y += (myShip.y - canvas.height / 2 - camera.y) * 0.1;
     }
 
-    // PIIRRETÄÄN MAILMA
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Taustaruudukko
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)';
-    ctx.lineWidth = 1;
-    const gridSize = 100;
-    const startX = Math.floor(camera.x / gridSize) * gridSize;
-    const startY = Math.floor(camera.y / gridSize) * gridSize;
+    // PIIRRETÄÄN LUOLASTO & MAAN MUODOT
+    ctx.fillStyle = '#181b28';
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 3;
 
-    for (let x = startX; x < camera.x + canvas.width; x += gridSize) {
-      ctx.beginPath(); ctx.moveTo(x - camera.x, 0); ctx.lineTo(x - camera.x, canvas.height); ctx.stroke();
-    }
-    for (let y = startY; y < camera.y + canvas.height; y += gridSize) {
-      ctx.beginPath(); ctx.moveTo(0, y - camera.y); ctx.lineTo(canvas.width, y - camera.y); ctx.stroke();
-    }
+    // Katot
+    ctx.beginPath();
+    ctx.moveTo(-camera.x, -camera.y);
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, ceiling[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, -camera.y);
+    ctx.fill();
+    ctx.stroke();
 
-    // Luolan rajat
+    // Lattiat
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i++) ctx.lineTo(i * segW - camera.x, floor[i] - camera.y);
+    ctx.lineTo(WORLD.width - camera.x, WORLD.height - camera.y);
+    ctx.lineTo(-camera.x, WORLD.height - camera.y);
+    ctx.fill();
+    ctx.stroke();
+
+    // Estepilarit
+    obstacles.forEach(o => {
+      ctx.beginPath();
+      ctx.arc(o.x - camera.x, o.y - camera.y, o.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+
+    // Tankkausalustat
+    ctx.strokeStyle = '#00ff66';
+    ctx.lineWidth = 5;
+    bases.forEach(b => {
+      ctx.beginPath();
+      ctx.moveTo(b.x1 - camera.x, b.y - camera.y);
+      ctx.lineTo(b.x2 - camera.x, b.y - camera.y);
+      ctx.stroke();
+    });
+
+    // Punaiset luolan ulkorajat
     ctx.strokeStyle = '#ff3366';
     ctx.lineWidth = 4;
     ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
@@ -643,7 +759,42 @@ function loop() {
     ships.forEach(s => s.draw());
     bullets.forEach(b => b.draw());
 
-    // Päivitetään HUD
+    // MINIKARTTA
+    const mapW = 180, mapH = 110;
+    const mapX = canvas.width - mapW - 20, mapY = 50;
+
+    ctx.fillStyle = 'rgba(5, 8, 15, 0.85)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (ceiling[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    for (let i = 0; i < numSegs; i += 2) {
+      let mx = mapX + (i * segW / WORLD.width) * mapW;
+      let my = mapY + (floor[i] / WORLD.height) * mapH;
+      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    ships.forEach(s => {
+      if (!s.isDead) {
+        let sx = mapX + (s.x / WORLD.width) * mapW;
+        let sy = mapY + (s.y / WORLD.height) * mapH;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    });
+
+    // HUD PÄIVITYS
     ships.forEach((s, i) => {
       const hud = document.getElementById(`p${i + 1}-hud`);
       if (hud) {
