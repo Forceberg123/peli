@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
@@ -416,43 +416,72 @@ function joinOnlineGame() {
   try {
     if (peer) peer.destroy();
     peer = new Peer({
-      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-    });
-  } catch(e) {
-    setNetStatus("Virhe liittymisessä. Avaa tiedosto omassa selaimessasi.");
-    return;
-  }
-
-  peer.on('open', () => {
-    hostConn = peer.connect(roomId, { reliable: true });
-
-    hostConn.on('open', () => {
-      setNetStatus("Yhdistetty! Odotetaan isännän käynnistävän pelin...");
-    });
-
-    hostConn.on('data', (data) => {
-      if (data.type === 'init') {
-        myPlayerIdx = data.playerIdx;
-      } else if (data.type === 'start') {
-        activePlayerCount = data.playerCount;
-        initGame();
-        document.getElementById('menu-overlay').style.display = 'none';
-        gameStarted = true;
-        updateHUDVisibility();
-      } else if (data.type === 'sync') {
-        matchTime = data.matchTime;
-        matchEnded = data.matchEnded;
-        if (data.ships) {
-          data.ships.forEach((s, idx) => {
-            if (!ships[idx]) {
-              const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
-              ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
+        hostConn.on('data', (data) => {
+          if (data.type === 'init') {
+            myPlayerIdx = data.playerIdx;
+          } else if (data.type === 'start') {
+            activePlayerCount = data.playerCount;
+            initGame();
+            document.getElementById('menu-overlay').style.display = 'none';
+            gameStarted = true;
+            updateHUDVisibility();
+          } else if (data.type === 'sync') {
+            matchTime = data.matchTime;
+            matchEnded = data.matchEnded;
+            if (data.ships) {
+              data.ships.forEach((s, idx) => {
+                if (!ships[idx]) {
+                  const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
+                  ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
+                }
+                ships[idx].x = s.x; ships[idx].y = s.y;
+                ships[idx].angle = s.angle; ships[idx].hp = s.hp;
+                ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+                ships[idx].isDead = s.isDead;
+                ships[idx].dockedBase = s.isDocked ? true : null; // TURVALLINEN BOOLEAN
+              });
             }
-            ships[idx].x = s.x; ships[idx].y = s.y;
-            ships[idx].angle = s.angle; ships[idx].hp = s.hp;
-            ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-            ships[idx].isDead = s.isDead; ships[idx].dockedBase = s.dockedBase;
-          });
+            
+            // TURVALLINEN AMMUSTEN PÄIVITYS
+            bullets.length = 0;
+            if (data.bullets && Array.isArray(data.bullets)) {
+              data.bullets.forEach(b => bullets.push(b));
+            }
+            
+            // VASTAANOTETTUJEN RÄJÄHDYSEFEKTIEN SUORITUS VIERAALLA
+            if (data.fx && Array.isArray(data.fx)) {
+              data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
+            }
+          }
+        });
+    // --- MAIN LOOP ---
+    function loop() {
+      if (gameStarted) {
+        if (isHost) {
+          pendingFx.length = 0;
+          ships.forEach(s => s.update());
+          for (let i = bullets.length - 1; i >= 0; i--) {
+            bullets[i].update();
+            if (bullets[i].life <= 0) bullets.splice(i, 1);
+          }
+
+          if (isOnline && clientConns.length > 0) {
+            // LÄHETETÄÄN VAIN TURVALLISIA PRIMITIIVITYYPPEJÄ (Estetään olioviitteiden kaatuminen)
+            const syncData = {
+              matchTime: matchTime,
+              matchEnded: matchEnded,
+              ships: ships.map(s => ({
+                x: s.x, y: s.y, angle: s.angle,
+                hp: s.hp, fuel: s.fuel, kills: s.kills,
+                isDead: s.isDead, isDocked: !!s.dockedBase
+              })),
+              bullets: bullets.map(b => ({ x: b.x, y: b.y })),
+              fx: pendingFx
+            };
+            clientConns.forEach(c => { if (c.open) c.send({ type: 'sync', ...syncData }); });
+          }
+        } else {
+          sendClientInput();
         }
         
         // TURVALLINEN AMMUSTEN PÄIVITYS (Estetään jäätyö / crash mobiilissa)
