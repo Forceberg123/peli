@@ -1,15 +1,16 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wings Cave Flyer - Online & Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=no">
+  <title>Wings Cave Flyer - Online Multiplayer</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
+    * { box-sizing: border-box; }
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
       background: #050810; overflow: hidden; font-family: 'Courier New', monospace; color: #00ffcc;
-      user-select: none;
+      user-select: none; -webkit-user-select: none;
     }
     
     /* ALKUVALIKKO */
@@ -17,17 +18,17 @@
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(5, 8, 15, 0.96); z-index: 500;
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      text-align: center;
+      text-align: center; padding: 15px;
     }
     #menu-card {
       background: rgba(10, 15, 30, 0.95); border: 2px solid #00ffcc;
-      border-radius: 12px; padding: 25px 35px; max-width: 550px; width: 90%;
+      border-radius: 12px; padding: 25px; max-width: 480px; width: 100%;
       box-shadow: 0 0 25px rgba(0, 255, 204, 0.25);
     }
-    #menu-card h1 { font-size: 32px; margin-top: 0; margin-bottom: 15px; color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
+    #menu-card h1 { font-size: 28px; margin: 0 0 15px 0; color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
     
-    .menu-group { margin: 18px 0; text-align: left; }
-    .menu-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #88aacc; font-size: 13px; }
+    .menu-group { margin: 15px 0; text-align: left; }
+    .menu-group label { display: block; margin-bottom: 6px; font-weight: bold; color: #88aacc; font-size: 13px; }
     
     .tab-buttons { display: flex; gap: 8px; margin-bottom: 15px; }
     .tab-btn {
@@ -41,33 +42,30 @@
       padding: 8px 14px; margin: 3px; font-family: inherit; font-size: 13px;
       cursor: pointer; border-radius: 6px; transition: 0.2s;
     }
-    .select-btn.active, .select-btn:hover {
-      background: #00ffcc; color: #000; font-weight: bold; box-shadow: 0 0 10px #00ffcc;
-    }
+    .select-btn.active, .select-btn:hover { background: #00ffcc; color: #000; font-weight: bold; }
     
     input[type="text"] {
       background: #0a0d18; border: 1px solid #00ffcc; color: #00ffcc;
-      padding: 10px; font-family: inherit; font-size: 14px; border-radius: 6px;
-      width: 100%; box-sizing: border-box; text-align: center; margin-bottom: 8px;
+      padding: 10px; font-family: inherit; font-size: 15px; border-radius: 6px;
+      width: 100%; box-sizing: border-box; text-align: center; margin-bottom: 10px;
     }
 
     .start-btn {
       background: #00ffcc; color: #000; font-family: inherit; font-size: 16px; font-weight: bold;
-      padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; margin-top: 15px;
+      padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;
       box-shadow: 0 0 15px #00ffcc; transition: 0.2s; width: 100%;
     }
-    .start-btn:hover { background: #fff; box-shadow: 0 0 25px #fff; transform: scale(1.02); }
+    .start-btn:hover { background: #fff; box-shadow: 0 0 25px #fff; }
 
     /* HUD JA OVERLAYT */
     #hud {
       position: fixed; top: 0; left: 0; width: 100%;
       display: flex; justify-content: space-between; align-items: center;
-      font-size: 13px; font-weight: bold; z-index: 100;
-      background: rgba(5, 8, 15, 0.85); padding: 8px 16px;
-      box-sizing: border-box; border-bottom: 2px solid #00ffcc;
-      backdrop-filter: blur(4px);
+      font-size: 12px; font-weight: bold; z-index: 100;
+      background: rgba(5, 8, 15, 0.85); padding: 8px 15px;
+      border-bottom: 2px solid #00ffcc; backdrop-filter: blur(4px);
     }
-    #timer { font-size: 18px; color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
+    #timer { font-size: 16px; color: #ffcc00; }
     
     #game-over {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -75,34 +73,33 @@
       flex-direction: column; justify-content: center; align-items: center;
       color: #00ffcc; text-align: center;
     }
-    #game-over h1 { font-size: 44px; margin-bottom: 10px; text-shadow: 0 0 15px #00ffcc; }
-    #game-over p { font-size: 18px; color: #fff; margin-bottom: 20px; }
 
     .btn {
       background: rgba(0,255,204,0.12); border: 1px solid #00ffcc; color: #00ffcc;
       padding: 6px 12px; font-family: inherit; font-size: 12px; font-weight: bold;
-      cursor: pointer; margin: 0 4px; transition: 0.2s; border-radius: 4px;
+      cursor: pointer; margin: 0 2px; border-radius: 4px;
     }
-    .btn:hover { background: #00ffcc; color: #000; box-shadow: 0 0 10px #00ffcc; }
+    .btn:hover { background: #00ffcc; color: #000; }
     canvas { display: block; width: 100vw; height: 100vh; background: #0a0d18; }
 
     .status-box {
       background: rgba(0, 0, 0, 0.4); border: 1px dashed rgba(0, 255, 204, 0.3);
-      padding: 8px; border-radius: 6px; font-size: 12px; color: #00ffcc; margin-top: 10px;
+      padding: 10px; border-radius: 6px; font-size: 12px; color: #00ffcc; margin-top: 10px;
+      word-break: break-word;
     }
 
     /* MOBIILIOHJAIMET / TOUCH CONTROLS */
     #touch-controls {
-      display: none; position: fixed; bottom: 15px; left: 0; width: 100%;
-      z-index: 200; justify-content: space-between; padding: 0 15px; box-sizing: border-box;
+      display: none; position: fixed; bottom: 20px; left: 0; width: 100%;
+      z-index: 200; justify-content: space-between; padding: 0 20px; box-sizing: border-box;
       pointer-events: none;
     }
-    .touch-group { display: flex; gap: 10px; pointer-events: auto; }
+    .touch-group { display: flex; gap: 12px; pointer-events: auto; }
     .touch-btn {
-      width: 55px; height: 55px; border-radius: 50%; background: rgba(0, 255, 204, 0.2);
-      border: 2px solid #00ffcc; color: #00ffcc; font-size: 18px; font-weight: bold;
+      width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 255, 204, 0.25);
+      border: 2px solid #00ffcc; color: #00ffcc; font-size: 20px; font-weight: bold;
       display: flex; justify-content: center; align-items: center; user-select: none;
-      touch-action: manipulation;
+      touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     }
     .touch-btn:active { background: #00ffcc; color: #000; }
   </style>
@@ -124,7 +121,7 @@
       <div class="menu-group">
         <label>Luo peli tai liity huoneeseen:</label>
         <button class="start-btn" onclick="hostOnlineGame()" style="margin-top: 0; margin-bottom: 12px;">LUO UUSI NETTIPELI (Host)</button>
-        <input type="text" id="join-room-id" placeholder="Syötä Huone-Koodi liittyäksesi" maxlength="12">
+        <input type="text" id="join-room-id" placeholder="Syötä Huone-Koodi" maxlength="12">
         <button class="btn" style="width: 100%; padding: 10px; margin: 0;" onclick="joinOnlineGame()">LIITY HUONEESEEN</button>
       </div>
 
@@ -142,11 +139,9 @@
       </div>
 
       <div class="menu-group" style="font-size: 11px; line-height: 1.4; color: #88aacc;">
-        <b>Ohjaimet:</b><br>
+        <b>Ohjaimet näppäimistöllä:</b><br>
         • P1: W (Kaasu), A/D (Kääntö), Space (Ampuminen)<br>
-        • P2: Nuoli Ylös, Vasen/Oikea, Enter (Ampuminen)<br>
-        • P3: I (Kaasu), J/L (Kääntö), U (Ampuminen)<br>
-        • P4: Numpad 8, 4/6, 0 (Ampuminen)
+        • P2: Nuoli Ylös, Vasen/Oikea, Enter (Ampuminen)
       </div>
 
       <button class="start-btn" onclick="startLocalGame()">ALOITA PAIKALLINEN PELI</button>
@@ -160,11 +155,10 @@
   <div id="p2-hud" style="color:#ff3366">P2 HP:150 | FUEL:100 | K:0</div>
   <div id="p3-hud" style="color:#00ff66; display:none;">P3 HP:150 | FUEL:100 | K:0</div>
   <div id="p4-hud" style="color:#ffcc00; display:none;">P4 HUD</div>
-  <div id="timer">Aikaa: 60s</div>
+  <div id="timer">60s</div>
   <div>
-    <span id="cam-info" style="font-size:11px; color:#88aacc; margin-right:8px;"></span>
     <button class="btn" onclick="showMenu()">Valikko</button>
-    <button class="btn" id="btn-restart" onclick="restartMatch()">Uusi erä</button>
+    <button class="btn" onclick="restartMatch()">Uusi erä</button>
   </div>
 </div>
 
@@ -181,7 +175,7 @@
     <div class="touch-btn" id="t-right">►</div>
   </div>
   <div class="touch-group">
-    <div class="touch-btn" id="t-fire" style="border-color:#ff3366; color:#ff3366;">▲</div>
+    <div class="touch-btn" id="t-fire" style="border-color:#ff3366; color:#ff3366;">🔥</div>
     <div class="touch-btn" id="t-thrust" style="width:65px; height:65px;">🚀</div>
   </div>
 </div>
@@ -189,7 +183,7 @@
 <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- CANVAS & BASIC SETUP ---
+// --- CANVAS & SYSTEM SETUP ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -200,7 +194,6 @@ const WORLD = { width: 5000, height: 3000 };
 const camera = { x: 0, y: 0 };
 const keys = {};
 
-// Touch controls setup
 const touchState = { left: false, right: false, thrust: false, fire: false };
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
   document.getElementById('touch-controls').style.display = 'flex';
@@ -221,16 +214,10 @@ bindTouch('t-right', 'right');
 bindTouch('t-thrust', 'thrust');
 bindTouch('t-fire', 'fire');
 
-window.addEventListener('keydown', e => { 
-  keys[e.code] = true;
-  if (isOnline && !isHost) sendClientInput();
-});
-window.addEventListener('keyup', e => { 
-  keys[e.code] = false;
-  if (isOnline && !isHost) sendClientInput();
-});
+window.addEventListener('keydown', e => { keys[e.code] = true; if (isOnline && !isHost) sendClientInput(); });
+window.addEventListener('keyup', e => { keys[e.code] = false; if (isOnline && !isHost) sendClientInput(); });
 
-// --- GAME STATE VARIABLES ---
+// --- GAME STATE ---
 let activePlayerCount = 2;
 let matchTime = 60;
 let matchEnded = false;
@@ -244,7 +231,6 @@ let peer = null;
 let hostConn = null;
 let clientConns = [];
 
-// Menu Tab Switcher
 function switchTab(tab) {
   document.getElementById('tab-online').classList.toggle('active', tab === 'online');
   document.getElementById('tab-local').classList.toggle('active', tab === 'local');
@@ -258,68 +244,52 @@ function setLocalPlayers(count) {
   document.getElementById('btn-mode-4p').classList.toggle('active', count === 4);
 }
 
-// --- ONLINE MULTIPLAYER LOGIC (PeerJS) ---
 function setNetStatus(msg) {
   document.getElementById('net-status').innerHTML = msg;
 }
 
-function generateRoomId() {
-  return 'cave-' + Math.floor(100000 + Math.random() * 900000).toString();
-}
-
+// --- PEERJS MULTIPLAYER ---
 function hostOnlineGame() {
   isOnline = true;
   isHost = true;
   myPlayerIdx = 0;
-  const roomId = generateRoomId();
+  const roomId = 'cave-' + Math.floor(1000 + Math.random() * 9000);
 
-  setNetStatus("Yhdistetään palvelimelle...");
-  
+  setNetStatus("Alustetaan peliä...");
   try {
-    if (peer) { peer.destroy(); }
-    // Lisätty ICE-palvelimet ja luotettavat verkkoasetukset alustukseen
+    if (peer) peer.destroy();
     peer = new Peer(roomId, {
-      debug: 1,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
+      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
     });
   } catch(e) {
-    setNetStatus("Virhe verkkoalustuksessa: " + e.message);
+    setNetStatus("Virhe verkkoalustuksessa. Tallenna tiedosto koneellesi ja avaa selaimessa.");
     return;
   }
 
   peer.on('open', (id) => {
-    setNetStatus(`Huone luotu! <b>Koodi: <span style="color:#fff; font-size:16px;">${id}</span></b><br>Odotetaan muita pelaajia (1/4)...`);
+    setNetStatus(`Huone luotu! Koodi: <b style="color:#fff; font-size:16px;">${id}</b><br>Odotetaan pelaajia (1/4)...`);
     
     if (!document.getElementById('start-online-btn')) {
-      const startBtn = document.createElement('button');
-      startBtn.id = 'start-online-btn';
-      startBtn.className = 'start-btn';
-      startBtn.innerText = 'KÄYNNISTÄ PELI NÄILLÄ PELAAJILLA';
-      startBtn.onclick = startOnlineMatch;
-      document.getElementById('panel-online').appendChild(startBtn);
+      const btn = document.createElement('button');
+      btn.id = 'start-online-btn';
+      btn.className = 'start-btn';
+      btn.innerText = 'KÄYNNISTÄ NETTIPELI';
+      btn.onclick = startOnlineMatch;
+      document.getElementById('panel-online').appendChild(btn);
     }
   });
 
   peer.on('connection', (conn) => {
-    if (clientConns.length >= 3) {
-      conn.send({ type: 'full' });
-      conn.close();
-      return;
-    }
-
+    if (clientConns.length >= 3) { conn.send({ type: 'full' }); conn.close(); return; }
+    
     const pIdx = clientConns.length + 1;
     clientConns.push(conn);
     conn.send({ type: 'init', playerIdx: pIdx });
 
-    setNetStatus(`Huone Koodi: <b>${peer.id}</b><br>Pelaajia liittynyt: ${clientConns.length + 1}/4`);
+    setNetStatus(`Pelaaja liittyi! Yhteensä: ${clientConns.length + 1}/4<br>Koodi: <b>${peer.id}</b>`);
 
     conn.on('data', (data) => {
-      if (data.type === 'input') {
+      if (data.type === 'input' && ships[pIdx]) {
         ships[pIdx].remoteCtrl = data.ctrl;
       }
     });
@@ -330,8 +300,7 @@ function hostOnlineGame() {
   });
 
   peer.on('error', (err) => {
-    console.error(err);
-    setNetStatus("Verkkovirhe: " + err.type + (err.message ? " (" + err.message + ")" : ""));
+    setNetStatus("Verkkovirhe: " + err.type + ". Jos avasit sivun esikatselussa, tallenna tiedosto koneellesi!");
   });
 }
 
@@ -342,20 +311,14 @@ function joinOnlineGame() {
   isOnline = true;
   isHost = false;
 
-  setNetStatus("Yhdistetään huoneeseen " + roomId + "...");
+  setNetStatus("Yhdistetään huoneeseen...");
   try {
-    if (peer) { peer.destroy(); }
+    if (peer) peer.destroy();
     peer = new Peer({
-      debug: 1,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
+      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
     });
   } catch(e) {
-    setNetStatus("Liittymisvirhe alustuksessa: " + e.message);
+    setNetStatus("Virhe liittymisessä. Avaa tiedosto omassa selaimessasi.");
     return;
   }
 
@@ -389,16 +352,310 @@ function joinOnlineGame() {
         data.bullets.forEach(b => bullets.push(b));
       }
     });
-
-    hostConn.on('close', () => {
-      alert("Yhteys isäntään katkesi.");
-      showMenu();
-    });
   });
 
   peer.on('error', (err) => {
-    console.error(err);
-    setNetStatus("Liittymisvirhe: Tarkista huonekoodi tai palomuuri.");
+    setNetStatus("Virhe liittymisessä. Tarkista huonekoodi.");
   });
 }
-<!-- ... existing code -->
+
+function sendClientInput() {
+  if (!hostConn || !hostConn.open) return;
+  const ctrl = {
+    left: keys['ArrowLeft'] || keys['KeyA'] || touchState.left,
+    right: keys['ArrowRight'] || keys['KeyD'] || touchState.right,
+    thrust: keys['ArrowUp'] || keys['KeyW'] || touchState.thrust,
+    fire: keys['Space'] || keys['Enter'] || touchState.fire
+  };
+  hostConn.send({ type: 'input', ctrl: ctrl });
+}
+
+function startOnlineMatch() {
+  if (!isHost) return;
+  activePlayerCount = clientConns.length + 1;
+  clientConns.forEach(c => c.send({ type: 'start', playerCount: activePlayerCount }));
+  document.getElementById('menu-overlay').style.display = 'none';
+  gameStarted = true;
+  initGame();
+}
+
+function startLocalGame() {
+  isOnline = false;
+  isHost = true;
+  myPlayerIdx = 0;
+  document.getElementById('menu-overlay').style.display = 'none';
+  gameStarted = true;
+  initGame();
+}
+
+function showMenu() {
+  gameStarted = false;
+  if (timerInterval) clearInterval(timerInterval);
+  document.getElementById('menu-overlay').style.display = 'flex';
+  document.getElementById('game-over').style.display = 'none';
+}
+
+// --- PELI-OBJEKTIT & FYSIIKKA ---
+class Ship {
+  constructor(id, x, y, color) {
+    this.id = id;
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.angle = -Math.PI / 2;
+    this.color = color;
+    this.hp = 150;
+    this.fuel = 100;
+    this.kills = 0;
+    this.isDead = false;
+    this.reload = 0;
+    this.remoteCtrl = null;
+  }
+
+  update() {
+    if (this.isDead) return;
+
+    let ctrl = { left: false, right: false, thrust: false, fire: false };
+    if (isOnline) {
+      if (this.id === myPlayerIdx) {
+        ctrl.left = keys['ArrowLeft'] || keys['KeyA'] || touchState.left;
+        ctrl.right = keys['ArrowRight'] || keys['KeyD'] || touchState.right;
+        ctrl.thrust = keys['ArrowUp'] || keys['KeyW'] || touchState.thrust;
+        ctrl.fire = keys['Space'] || keys['Enter'] || touchState.fire;
+      } else if (this.remoteCtrl) {
+        ctrl = this.remoteCtrl;
+      }
+    } else {
+      // Local multiplayer
+      if (this.id === 0) {
+        ctrl.left = keys['KeyA'] || touchState.left; ctrl.right = keys['KeyD'] || touchState.right;
+        ctrl.thrust = keys['KeyW'] || touchState.thrust; ctrl.fire = keys['Space'] || touchState.fire;
+      } else if (this.id === 1) {
+        ctrl.left = keys['ArrowLeft']; ctrl.right = keys['ArrowRight'];
+        ctrl.thrust = keys['ArrowUp']; ctrl.fire = keys['Enter'];
+      }
+    }
+
+    if (ctrl.left) this.angle -= 0.07;
+    if (ctrl.right) this.angle += 0.07;
+    if (ctrl.thrust && this.fuel > 0) {
+      this.vx += Math.cos(this.angle) * 0.38;
+      this.vy += Math.sin(this.angle) * 0.38;
+      this.fuel = Math.max(0, this.fuel - 0.0375);
+    }
+
+    this.vy += 0.08; // Gravitaatio
+    this.vx *= 0.985; this.vy *= 0.985; // Ilmanvastus
+    this.x += this.vx; this.y += this.vy;
+
+    if (this.reload > 0) this.reload--;
+    if (ctrl.fire && this.reload <= 0) {
+      bullets.push(new Bullet(this.x, this.y, this.angle, this.id));
+      this.reload = 10;
+    }
+
+    // Seintötörmäykset
+    if (this.x < 50 || this.x > WORLD.width - 50 || this.y < 50 || this.y > WORLD.height - 50) {
+      this.hp -= 12.5;
+      this.vx *= -0.5; this.vy *= -0.5;
+      if (this.hp <= 0) this.die();
+    }
+  }
+
+  die() {
+    this.isDead = true;
+    this.hp = 0;
+    setTimeout(() => {
+      this.x = 200 + this.id * 400;
+      this.y = 300;
+      this.vx = 0; this.vy = 0;
+      this.hp = 150; this.fuel = 100;
+      this.isDead = false;
+    }, 3000);
+  }
+
+  draw() {
+    if (this.isDead) return;
+    ctx.save();
+    ctx.translate(this.x - camera.x, this.y - camera.y);
+    ctx.rotate(this.angle);
+
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(15, 0);
+    ctx.lineTo(-10, -10);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-10, 10);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+class Bullet {
+  constructor(x, y, angle, ownerId) {
+    this.x = x; this.y = y;
+    this.vx = Math.cos(angle) * 16;
+    this.vy = Math.sin(angle) * 16;
+    this.ownerId = ownerId;
+    this.life = 90;
+  }
+
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    this.life--;
+
+    // Törmäys aluksiin
+    ships.forEach(s => {
+      if (!s.isDead && s.id !== this.ownerId) {
+        const dist = Math.hypot(s.x - this.x, s.y - this.y);
+        if (dist < 15) {
+          s.hp -= 25;
+          this.life = 0;
+          if (s.hp <= 0) {
+            s.die();
+            if (ships[this.ownerId]) ships[this.ownerId].kills++;
+          }
+        }
+      }
+    });
+  }
+
+  draw() {
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.arc(this.x - camera.x, this.y - camera.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const ships = [];
+const bullets = [];
+
+function initGame() {
+  ships.length = 0;
+  bullets.length = 0;
+  matchTime = 60;
+  matchEnded = false;
+
+  const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
+  for (let i = 0; i < activePlayerCount; i++) {
+    ships.push(new Ship(i, 300 + i * 400, 300, colors[i]));
+  }
+
+  updateHUDVisibility();
+
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (matchTime > 0) {
+      matchTime--;
+      document.getElementById('timer').innerText = matchTime + "s";
+    } else if (!matchEnded) {
+      matchEnded = true;
+      endMatch();
+    }
+  }, 1000);
+}
+
+function updateHUDVisibility() {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById(`p${i}-hud`);
+    if (el) el.style.display = i <= activePlayerCount ? 'block' : 'none';
+  }
+}
+
+function restartMatch() {
+  document.getElementById('game-over').style.display = 'none';
+  initGame();
+}
+
+function endMatch() {
+  let winner = "EIKÄ KETÄÄN!";
+  let maxKills = -1;
+  ships.forEach(s => {
+    if (s.kills > maxKills) {
+      maxKills = s.kills;
+      winner = `PELAAJA ${s.id + 1}`;
+    }
+  });
+
+  document.getElementById('winner-title').innerText = `${winner} VOITTI!`;
+  document.getElementById('final-score').innerText = `Eniten tapettuja aluksia: ${maxKills}`;
+  document.getElementById('game-over').style.display = 'flex';
+}
+
+// --- MAIN LOOP ---
+function loop() {
+  if (gameStarted) {
+    if (isHost) {
+      ships.forEach(s => s.update());
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].update();
+        if (bullets[i].life <= 0) bullets.splice(i, 1);
+      }
+
+      // Synkronoitiin tilat asiakkaille
+      if (isOnline && clientConns.length > 0) {
+        const syncData = {
+          matchTime: matchTime,
+          matchEnded: matchEnded,
+          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead })),
+          bullets: bullets.map(b => ({ x: b.x, y: b.y }))
+        };
+        clientConns.forEach(c => { if (c.open) c.send({ type: 'sync', ...syncData }); });
+      }
+    } else {
+      // Client-tila
+      sendClientInput();
+    }
+
+    // KERMA-SEURANTA: LUKITTU EHDOTTOMASTI OMAAN ALUKSEEN
+    const myShip = ships[myPlayerIdx];
+    if (myShip) {
+      camera.x = myShip.x - canvas.width / 2;
+      camera.y = myShip.y - canvas.height / 2;
+    }
+
+    // PIIRRETÄÄN MAILMA
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Taustaruudukko
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)';
+    ctx.lineWidth = 1;
+    const gridSize = 100;
+    const startX = Math.floor(camera.x / gridSize) * gridSize;
+    const startY = Math.floor(camera.y / gridSize) * gridSize;
+
+    for (let x = startX; x < camera.x + canvas.width; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x - camera.x, 0); ctx.lineTo(x - camera.x, canvas.height); ctx.stroke();
+    }
+    for (let y = startY; y < camera.y + canvas.height; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y - camera.y); ctx.lineTo(canvas.width, y - camera.y); ctx.stroke();
+    }
+
+    // Luolan rajat
+    ctx.strokeStyle = '#ff3366';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
+
+    // Objektit
+    ships.forEach(s => s.draw());
+    bullets.forEach(b => b.draw());
+
+    // Päivitetään HUD
+    ships.forEach((s, i) => {
+      const hud = document.getElementById(`p${i + 1}-hud`);
+      if (hud) {
+        hud.innerText = `P${i + 1} HP:${Math.ceil(s.hp)} | FUEL:${Math.ceil(s.fuel)} | K:${s.kills}`;
+      }
+    });
+  }
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
