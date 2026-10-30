@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fi">
 <head>
   <meta charset="UTF-8">
@@ -384,7 +384,6 @@ function hostOnlineGame() {
     clientConns.push(conn);
 
     conn.on('open', () => {
-      // Lähetetään alkutieto vasta kuittauksella kun yhteys on auki
       conn.send({ type: 'init', playerIdx: pIdx });
       setNetStatus(`Pelaaja liittyi! Yhteensä: ${clientConns.length + 1}/4<br>Koodi: <b>${peer.id}</b>`);
     });
@@ -401,7 +400,7 @@ function hostOnlineGame() {
   });
 
   peer.on('error', (err) => {
-    setNetStatus("Verkkovirhe: " + err.type + ". Jos avasit sivun esikatselussa, tallenna tiedosto koneellesi!");
+    setNetStatus("Verkkovirhe: " + err.type + ". Tallenna tiedosto koneellesi!");
   });
 }
 
@@ -416,91 +415,65 @@ function joinOnlineGame() {
   try {
     if (peer) peer.destroy();
     peer = new Peer({
-        hostConn.on('data', (data) => {
-          if (data.type === 'init') {
-            myPlayerIdx = data.playerIdx;
-          } else if (data.type === 'start') {
-            activePlayerCount = data.playerCount;
-            initGame();
-            document.getElementById('menu-overlay').style.display = 'none';
-            gameStarted = true;
-            updateHUDVisibility();
-          } else if (data.type === 'sync') {
-            matchTime = data.matchTime;
-            matchEnded = data.matchEnded;
-            if (data.ships) {
-              data.ships.forEach((s, idx) => {
-                if (!ships[idx]) {
-                  const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
-                  ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
-                }
-                ships[idx].x = s.x; ships[idx].y = s.y;
-                ships[idx].angle = s.angle; ships[idx].hp = s.hp;
-                ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
-                ships[idx].isDead = s.isDead;
-                ships[idx].dockedBase = s.isDocked ? true : null; // TURVALLINEN BOOLEAN
-              });
-            }
-            
-            // TURVALLINEN AMMUSTEN PÄIVITYS
-            bullets.length = 0;
-            if (data.bullets && Array.isArray(data.bullets)) {
-              data.bullets.forEach(b => bullets.push(b));
-            }
-            
-            // VASTAANOTETTUJEN RÄJÄHDYSEFEKTIEN SUORITUS VIERAALLA
-            if (data.fx && Array.isArray(data.fx)) {
-              data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
-            }
-          }
-        });
-    // --- MAIN LOOP ---
-    function loop() {
-      if (gameStarted) {
-        if (isHost) {
-          pendingFx.length = 0;
-          ships.forEach(s => s.update());
-          for (let i = bullets.length - 1; i >= 0; i--) {
-            bullets[i].update();
-            if (bullets[i].life <= 0) bullets.splice(i, 1);
-          }
-
-          if (isOnline && clientConns.length > 0) {
-            // LÄHETETÄÄN VAIN TURVALLISIA PRIMITIIVITYYPPEJÄ (Estetään olioviitteiden kaatuminen)
-            const syncData = {
-              matchTime: matchTime,
-              matchEnded: matchEnded,
-              ships: ships.map(s => ({
-                x: s.x, y: s.y, angle: s.angle,
-                hp: s.hp, fuel: s.fuel, kills: s.kills,
-                isDead: s.isDead, isDocked: !!s.dockedBase
-              })),
-              bullets: bullets.map(b => ({ x: b.x, y: b.y })),
-              fx: pendingFx
-            };
-            clientConns.forEach(c => { if (c.open) c.send({ type: 'sync', ...syncData }); });
-          }
-        } else {
-          sendClientInput();
-        }
-        
-        // TURVALLINEN AMMUSTEN PÄIVITYS (Estetään jäätyö / crash mobiilissa)
-        bullets.length = 0;
-        if (data.bullets && Array.isArray(data.bullets)) {
-          data.bullets.forEach(b => bullets.push(b));
-        }
-        
-        // VASTAANOTETTUJEN RÄJÄHDYSEFEKTIEN SUORITUS VIERAALLA
-        if (data.fx && Array.isArray(data.fx)) {
-          data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
-        }
-      }
+      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
     });
-  });
 
-  peer.on('error', (err) => {
-    setNetStatus("Virhe liittymisessä. Tarkista huonekoodi.");
-  });
+    peer.on('open', () => {
+      hostConn = peer.connect(roomId);
+
+      hostConn.on('open', () => {
+        setNetStatus("Yhdistetty isäntään! Odotetaan pelin käynnistymistä...");
+      });
+
+      hostConn.on('data', (data) => {
+        if (data.type === 'init') {
+          myPlayerIdx = data.playerIdx;
+        } else if (data.type === 'start') {
+          activePlayerCount = data.playerCount;
+          initGame();
+          document.getElementById('menu-overlay').style.display = 'none';
+          gameStarted = true;
+          updateHUDVisibility();
+        } else if (data.type === 'sync') {
+          matchTime = data.matchTime;
+          matchEnded = data.matchEnded;
+
+          if (data.ships) {
+            data.ships.forEach((s, idx) => {
+              if (!ships[idx]) {
+                const colors = ['#00ffcc', '#ff3366', '#00ff66', '#ffcc00'];
+                ships[idx] = new Ship(idx, s.x, s.y, colors[idx]);
+              }
+              ships[idx].x = s.x; ships[idx].y = s.y;
+              ships[idx].angle = s.angle; ships[idx].hp = s.hp;
+              ships[idx].fuel = s.fuel; ships[idx].kills = s.kills;
+              ships[idx].isDead = s.isDead;
+              ships[idx].dockedBase = s.isDocked ? true : null;
+            });
+          }
+
+          bullets.length = 0;
+          if (data.bullets && Array.isArray(data.bullets)) {
+            data.bullets.forEach(b => bullets.push(b));
+          }
+
+          if (data.fx && Array.isArray(data.fx)) {
+            data.fx.forEach(fx => spawnExplosion(fx.x, fx.y, fx.count));
+          }
+        }
+      });
+
+      hostConn.on('close', () => {
+        setNetStatus("Yhteys isäntään katkesi.");
+      });
+    });
+
+    peer.on('error', (err) => {
+      setNetStatus("Virhe liittymisessä. Tarkista huonekoodi.");
+    });
+  } catch(e) {
+    setNetStatus("Verkkovirhe liittymisessä.");
+  }
 }
 
 function sendClientInput() {
@@ -591,7 +564,6 @@ class Ship {
       this.vy += Math.sin(this.angle) * 0.38;
       this.fuel = Math.max(0, this.fuel - 0.0375);
 
-      // KAASUN POLTTOAINEN- & SAVUVANA
       const backX = this.x - Math.cos(this.angle) * 12;
       const backY = this.y - Math.sin(this.angle) * 12;
       const pVx = -Math.cos(this.angle) * 3 + (Math.random() - 0.5) * 1.5;
@@ -600,7 +572,6 @@ class Ship {
       particles.push(new Particle(backX, backY, pVx, pVy, pColor, 4, 15, 'fire'));
     }
 
-    // LOW HP SAVUEFEKTI
     if (this.hp < 50 && Math.random() > 0.4) {
       particles.push(new Particle(this.x, this.y, (Math.random() - 0.5), -1, '#666666', 5, 25, 'smoke'));
     }
@@ -611,7 +582,7 @@ class Ship {
       this.x += this.vx; this.y += this.vy;
     } else {
       this.vx = 0; this.vy = 0;
-      this.y = this.dockedBase.y - 10;
+      this.y = typeof this.dockedBase === 'object' && this.dockedBase !== null ? this.dockedBase.y - 10 : this.y;
       this.angle += (-Math.PI / 2 - this.angle) * 0.2;
       if (this.hp < 150) this.hp = Math.min(150, this.hp + 0.8);
       if (this.fuel < 100) this.fuel = Math.min(100, this.fuel + 1.0);
@@ -623,7 +594,6 @@ class Ship {
       this.reload = 10;
     }
 
-    // TANKKAUSALUSTALLE LASKUTUTUMINEN
     if (!this.dockedBase && this.vy >= 0) {
       for (let b of bases) {
         if (this.x >= b.x1 && this.x <= b.x2 && Math.abs(this.y - (b.y - 10)) < 15) {
@@ -637,7 +607,6 @@ class Ship {
       }
     }
 
-    // MAAN MUOTO - JA SEINÄTÖRMÄYKSET
     const ceilY = getCeilingY(this.x);
     const floorY = getFloorY(this.x);
     const hitObstacle = obstacles.some(o => Math.hypot(this.x - o.x, this.y - o.y) < o.radius + 10);
@@ -818,7 +787,11 @@ function loop() {
         const syncData = {
           matchTime: matchTime,
           matchEnded: matchEnded,
-          ships: ships.map(s => ({ x: s.x, y: s.y, angle: s.angle, hp: s.hp, fuel: s.fuel, kills: s.kills, isDead: s.isDead, dockedBase: s.dockedBase })),
+          ships: ships.map(s => ({
+            x: s.x, y: s.y, angle: s.angle,
+            hp: s.hp, fuel: s.fuel, kills: s.kills,
+            isDead: s.isDead, isDocked: !!s.dockedBase
+          })),
           bullets: bullets.map(b => ({ x: b.x, y: b.y })),
           fx: pendingFx
         };
