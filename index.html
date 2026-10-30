@@ -715,6 +715,13 @@ class Bullet {
   }
 }
 
+function drawBullet(b) {
+  ctx.fillStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.arc(b.x - camera.x, b.y - camera.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 const ships = [];
 const bullets = [];
 
@@ -863,7 +870,13 @@ function loop() {
     // Objektit & Partikkelit
     particles.forEach(p => p.draw());
     ships.forEach(s => s.draw());
-    bullets.forEach(b => b.draw());
+    bullets.forEach(b => {
+      if (typeof b.draw === 'function') {
+        b.draw();
+      } else {
+        drawBullet(b);
+      }
+    });
 
     // MINIKARTTA
     const mapW = 180, mapH = 110;
